@@ -90,26 +90,19 @@ export default function MatchStatsPage() {
       if (point.point_winner_team === "teamA") teamA.totalPointsWon += 1;
       if (point.point_winner_team === "teamB") teamB.totalPointsWon += 1;
 
-      if (point.ending_type === "Winner") {
-        if (point.point_winner_team === "teamA") teamA.winners += 1;
-        if (point.point_winner_team === "teamB") teamB.winners += 1;
-      }
-      if (point.ending_type === "Unforced Error") {
-        if (point.point_winner_team === "teamA") teamA.unforcedErrors += 1;
-        if (point.point_winner_team === "teamB") teamB.unforcedErrors += 1;
-      }
-      if (point.ending_type === "Forced Error") {
-        if (point.point_winner_team === "teamA") teamA.forcedErrors += 1;
-        if (point.point_winner_team === "teamB") teamB.forcedErrors += 1;
-      }
-      if (point.ending_type === "Ace") {
-        if (point.point_winner_team === "teamA") teamA.aces += 1;
-        if (point.point_winner_team === "teamB") teamB.aces += 1;
-      }
-      if (point.ending_type === "Double Fault") {
-        if (point.point_winner_team === "teamA") teamA.doubleFaults += 1;
-        if (point.point_winner_team === "teamB") teamB.doubleFaults += 1;
-      }
+      // Positive stats: credited to point winner.
+      if (point.ending_type === "Ace" && point.point_winner_team === "teamA") teamA.aces += 1;
+      if (point.ending_type === "Ace" && point.point_winner_team === "teamB") teamB.aces += 1;
+      if (point.ending_type === "Winner" && point.point_winner_team === "teamA") teamA.winners += 1;
+      if (point.ending_type === "Winner" && point.point_winner_team === "teamB") teamB.winners += 1;
+
+      // Error stats: credited to the team that LOST the point.
+      if (point.ending_type === "Double Fault" && point.point_winner_team === "teamB") teamA.doubleFaults += 1;
+      if (point.ending_type === "Double Fault" && point.point_winner_team === "teamA") teamB.doubleFaults += 1;
+      if (point.ending_type === "Unforced Error" && point.point_winner_team === "teamB") teamA.unforcedErrors += 1;
+      if (point.ending_type === "Unforced Error" && point.point_winner_team === "teamA") teamB.unforcedErrors += 1;
+      if (point.ending_type === "Forced Error" && point.point_winner_team === "teamB") teamA.forcedErrors += 1;
+      if (point.ending_type === "Forced Error" && point.point_winner_team === "teamA") teamB.forcedErrors += 1;
     }
 
     return { teamA, teamB };
@@ -172,8 +165,9 @@ export default function MatchStatsPage() {
           {statRows.map((row) => {
             const aValue = stats.teamA[row.key];
             const bValue = stats.teamB[row.key];
-            const aWins = aValue > bValue;
-            const bWins = bValue > aValue;
+            const lowerIsBetter = row.key === "unforcedErrors" || row.key === "forcedErrors" || row.key === "doubleFaults";
+            const aWins = lowerIsBetter ? aValue < bValue : aValue > bValue;
+            const bWins = lowerIsBetter ? bValue < aValue : bValue > aValue;
 
             return (
               <div key={row.key} className="grid grid-cols-3 items-center border-b-2 border-slate-300 px-3 py-2 last:border-b-0">
