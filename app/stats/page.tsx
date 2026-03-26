@@ -5,9 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 
-type TeamRow = {
+type ProfileRow = {
   id: string;
-  name: string;
+  username: string;
 };
 
 type PlayerRow = {
@@ -56,7 +56,7 @@ const formatDate = (value: string): string =>
 
 export default function TeamStatsPage() {
   const router = useRouter();
-  const [team, setTeam] = useState<TeamRow | null>(null);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [matches, setMatches] = useState<MatchRow[]>([]);
   const [points, setPoints] = useState<PointRow[]>([]);
@@ -95,6 +95,18 @@ export default function TeamStatsPage() {
         return;
       }
 
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, username")
+        .eq("id", authData.user.id)
+        .maybeSingle();
+      if (profileError) {
+        setErrorMessage(profileError.message);
+        setIsLoading(false);
+        return;
+      }
+      setProfile((profileData as ProfileRow | null) ?? null);
+
       const { data: teamData, error: teamError } = await supabase
         .from("teams")
         .select("id, name")
@@ -107,8 +119,6 @@ export default function TeamStatsPage() {
         setIsLoading(false);
         return;
       }
-
-      setTeam(teamData as TeamRow);
 
       const { data: playersData, error: playersError } = await supabase
         .from("players")
@@ -199,7 +209,7 @@ export default function TeamStatsPage() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Team Analytics Dashboard</p>
-            <h1 className="text-2xl font-black text-slate-900">{team?.name ?? "My Team"} Stats</h1>
+            <h1 className="text-2xl font-black text-slate-900">{profile?.username ?? "My"}&apos;s team</h1>
           </div>
           <Link
             href="/"
