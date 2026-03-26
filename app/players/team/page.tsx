@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 
@@ -143,6 +144,12 @@ export default function TeamRosterPage() {
   return (
     <main className="flex flex-1 flex-col bg-slate-900 px-4 py-6 text-white">
       <section className="w-full rounded-2xl border border-slate-700 bg-slate-800 p-5 shadow-xl">
+        <Link
+          href="/"
+          className="inline-flex items-center rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-200"
+        >
+          Back to Dashboard
+        </Link>
         <h1 className="text-2xl font-bold text-white">{team?.name ?? "Team"} Roster</h1>
         <p className="mt-2 text-sm text-slate-300">Add players to your team and manage your roster.</p>
 
@@ -212,9 +219,9 @@ export default function TeamRosterPage() {
             players.map((player) => (
               <div key={player.id} className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900 px-3 py-3">
                 <div>
-                  <p className="text-sm font-semibold text-white">
+                  <Link href={`/players/${player.id}`} className="text-sm font-semibold text-white underline-offset-2 hover:underline">
                     {player.first_name} {player.last_name}
-                  </p>
+                  </Link>
                   <p className="text-xs text-slate-400">
                     @{player.nickname} - {player.dominant_hand ?? "Unknown"} hand
                   </p>

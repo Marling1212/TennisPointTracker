@@ -51,3 +51,12 @@ create table if not exists public.points (
   stroke_type text,
   created_at timestamp with time zone default now()
 );
+
+-- player_notes: Unlimited user-created notes for each player.
+create table if not exists public.player_notes (
+  id uuid primary key default gen_random_uuid(),
+  player_id uuid not null references public.players (id) on delete cascade,
+  owner_id uuid not null references public.profiles (id) on delete cascade,
+  note_text text not null,
+  created_at timestamp with time zone default now()
+);
