@@ -6,7 +6,7 @@ import Scoreboard from "@/components/Scoreboard";
 import { calculateNextScore, type ScoreState } from "@/utils/scoringEngine";
 
 type TeamSide = "A" | "B";
-type Phase = "serve-first" | "serve-second" | "point-winner" | "point-outcome" | "stroke" | "awaiting-server-selection";
+type Phase = "serve-first" | "serve-second" | "point-winner" | "point-outcome" | "stroke" | "awaiting-server-selection" | "match-over";
 type Player = TeamSide;
 type Stroke = "Forehand" | "Backhand" | "Volley" | "Overhead";
 type Outcome = "Winner" | "Unforced Error" | "Forced Error";
@@ -186,17 +186,18 @@ const finalizePoint = (state: ReducerState, payload: FinalPointPayload): Reducer
   const nextServerSide = gameEnded ? otherTeam(state.present.currentServerSide) : state.present.currentServerSide;
   const nextKnownServer = state.knownServers[nextServerSide];
   const needsIntercept = gameEnded && state.config.matchFormat === "doubles" && !nextKnownServer;
+  const isMatchOver = nextScore.isMatchOver;
 
   return withHistory(
     state,
     {
       ...state.present,
-      phase: needsIntercept ? "awaiting-server-selection" : "serve-first",
+      phase: isMatchOver ? "match-over" : needsIntercept ? "awaiting-server-selection" : "serve-first",
       draft: { serveSequence: [] },
       scoreState: nextScore,
       currentServerSide: nextServerSide,
       currentServerId: gameEnded ? nextKnownServer ?? state.present.currentServerId : state.present.currentServerId,
-      awaitingServerSide: needsIntercept ? nextServerSide : undefined,
+      awaitingServerSide: isMatchOver ? undefined : needsIntercept ? nextServerSide : undefined,
     },
     payload,
   );
@@ -385,7 +386,16 @@ export default function LiveScoringInput({ setupData, matchData }: LiveScoringIn
             ? "State 3: Point Outcome"
             : state.present.phase === "stroke"
               ? "State 4: Stroke"
-              : "AwaitingServerSelection";
+              : state.present.phase === "awaiting-server-selection"
+                ? "AwaitingServerSelection"
+                : "Match Over";
+
+  const matchWinnerSide: TeamSide | null =
+    state.present.scoreState.sets.teamA > state.present.scoreState.sets.teamB
+      ? "A"
+      : state.present.scoreState.sets.teamB > state.present.scoreState.sets.teamA
+        ? "B"
+        : null;
 
   return (
     <div className="relative flex h-full w-full min-h-0 flex-col bg-slate-950">
@@ -615,6 +625,27 @@ export default function LiveScoringInput({ setupData, matchData }: LiveScoringIn
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {state.present.phase === "match-over" && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/95 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 text-center shadow-xl">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Match Complete</p>
+            <h3 className="mt-2 text-xl font-bold text-slate-900">
+              {matchWinnerSide ? `${teamLabel(matchWinnerSide, config)} wins` : "Match finished"}
+            </h3>
+            <p className="mt-2 text-sm text-slate-700">
+              Final sets: {state.present.scoreState.sets.teamA} - {state.present.scoreState.sets.teamB}
+            </p>
+            <button
+              type="button"
+              onClick={() => router.push("/")}
+              className="mt-4 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+            >
+              Back to Dashboard
+            </button>
           </div>
         </div>
       )}
