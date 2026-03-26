@@ -207,6 +207,8 @@ export default function NewMatchPage() {
   const serverCandidates = [...teamAPlayers, ...teamBPlayers];
   const hasValidInitialServer = serverCandidates.some((candidate) => candidate.id === initialServerId);
   const canStartMatch = isTeamsReady && hasValidInitialServer;
+  const teamALabel = teamAPlayers.map((player) => player.name).join(" / ") || (teamAMode === "roster" ? teamName : "Guest Team A");
+  const teamBLabel = teamBPlayers.map((player) => player.name).join(" / ") || (teamBMode === "roster" ? `${teamName} Roster B` : "Guest Team B");
 
   const startMatch = async () => {
     if (!canStartMatch) return;
@@ -222,8 +224,8 @@ export default function NewMatchPage() {
       matchFormat,
       scoringType,
       setsFormat,
-      teamAName: teamAMode === "roster" ? teamName : "Guest Team A",
-      teamBName: teamBMode === "roster" ? `${teamName} Roster B` : "Guest Team B",
+      teamAName: teamALabel,
+      teamBName: teamBLabel,
       teamAPlayers,
       teamBPlayers,
       teamAMode,

@@ -115,6 +115,14 @@ export default function MatchStatsPage() {
     return { teamA, teamB };
   }, [points]);
 
+  const winnerLabel = useMemo(() => {
+    const teamAName = match?.team_a_name ?? "Team A";
+    const teamBName = match?.team_b_name ?? "Team B";
+    if (stats.teamA.totalPointsWon > stats.teamB.totalPointsWon) return teamAName;
+    if (stats.teamB.totalPointsWon > stats.teamA.totalPointsWon) return teamBName;
+    return "Draw";
+  }, [match, stats.teamA.totalPointsWon, stats.teamB.totalPointsWon]);
+
   const statRows: Array<{ key: StatKey; label: string }> = [
     { key: "totalPointsWon", label: "Total Points Won" },
     { key: "winners", label: "Winners" },
@@ -146,6 +154,10 @@ export default function MatchStatsPage() {
         </div>
 
         <h1 className="mt-3 text-xl font-black text-slate-900">Post-Match Stats</h1>
+        <div className="mt-3 rounded-lg border-2 border-slate-300 bg-slate-50 px-3 py-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Winner</p>
+          <p className="text-lg font-black text-slate-900">{winnerLabel}</p>
+        </div>
         {errorMessage && (
           <div className="mt-3 rounded-lg border-2 border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMessage}</div>
         )}
@@ -171,6 +183,19 @@ export default function MatchStatsPage() {
               </div>
             );
           })}
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="rounded-lg border-2 border-slate-300 bg-white px-3 py-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Total Points</p>
+            <p className="text-xl font-black text-slate-900">{points.length}</p>
+          </div>
+          <div className="rounded-lg border-2 border-slate-300 bg-white px-3 py-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Point Margin</p>
+            <p className="text-xl font-black text-slate-900">
+              {Math.abs(stats.teamA.totalPointsWon - stats.teamB.totalPointsWon)}
+            </p>
+          </div>
         </div>
       </section>
     </main>
