@@ -16,9 +16,17 @@ type CourtPlayer = {
   slot: number;
 };
 
+type RosterPlayerRow = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  nickname: string | null;
+};
+
 export default function NewMatchPage() {
   const router = useRouter();
   const [roster, setRoster] = useState<CourtPlayer[]>([]);
+  const [teamName, setTeamName] = useState("My Team");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [matchFormat, setMatchFormat] = useState<MatchFormat>("singles");
@@ -48,7 +56,7 @@ export default function NewMatchPage() {
 
       const { data: teamData, error: teamError } = await supabase
         .from("teams")
-        .select("id")
+        .select("id, name")
         .eq("owner_id", authData.user.id)
         .limit(1)
         .maybeSingle();
@@ -58,6 +66,8 @@ export default function NewMatchPage() {
         setIsLoading(false);
         return;
       }
+
+      setTeamName(teamData.name);
 
       const { data: playerData, error: playerError } = await supabase
         .from("players")
@@ -71,7 +81,7 @@ export default function NewMatchPage() {
         return;
       }
 
-      const mapped: CourtPlayer[] = (playerData ?? []).map((player, index) => ({
+      const mapped: CourtPlayer[] = ((playerData ?? []) as RosterPlayerRow[]).map((player, index) => ({
         id: player.id,
         name: `${player.first_name} ${player.last_name}`,
         nickname: player.nickname ?? undefined,
@@ -146,19 +156,21 @@ export default function NewMatchPage() {
     teamAMode === "roster"
       ? teamARosterIds
           .slice(0, requiredPlayers)
-          .map((id, index): CourtPlayer => {
+          .map((id, index): CourtPlayer | null => {
             const player = roster.find((entry) => entry.id === id);
+            if (!player) return null;
             return {
               id,
-              name: player?.name ?? `Team A Player ${index + 1}`,
-              nickname: player?.nickname,
+              name: player.name,
+              nickname: player.nickname,
               side: "A",
               slot: index + 1,
             };
           })
+          .filter((player): player is CourtPlayer => player !== null)
       : teamAGuestNames.slice(0, requiredPlayers).map((name, index): CourtPlayer => ({
           id: `team-a-guest-${index + 1}`,
-          name: name.trim() || `Team A Guest ${index + 1}`,
+          name: name.trim() || `Guest ${index + 1}`,
           side: "A",
           slot: index + 1,
         }));
@@ -167,16 +179,18 @@ export default function NewMatchPage() {
     teamBMode === "roster"
       ? teamBRosterIds
           .slice(0, requiredPlayers)
-          .map((id, index): CourtPlayer => {
+          .map((id, index): CourtPlayer | null => {
             const player = roster.find((entry) => entry.id === id);
+            if (!player) return null;
             return {
               id,
-              name: player?.name ?? `Team B Player ${index + 1}`,
-              nickname: player?.nickname,
+              name: player.name,
+              nickname: player.nickname,
               side: "B",
               slot: index + 1,
             };
           })
+          .filter((player): player is CourtPlayer => player !== null)
       : teamBGuestNames.slice(0, requiredPlayers).map(
           (name, index): CourtPlayer => ({
             id: `team-b-guest-${index + 1}`,
@@ -198,8 +212,8 @@ export default function NewMatchPage() {
 
     const payload = {
       matchFormat,
-      teamAName: teamAMode === "roster" ? "My Team" : "Guest Team A",
-      teamBName: teamBMode === "roster" ? "Roster Opponents" : "Guest Team B",
+      teamAName: teamAMode === "roster" ? teamName : "Guest Team A",
+      teamBName: teamBMode === "roster" ? `${teamName} Roster B` : "Guest Team B",
       teamAPlayers,
       teamBPlayers,
       teamAMode,
@@ -256,7 +270,7 @@ export default function NewMatchPage() {
         </div>
 
         <div className="mt-6">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 2: Define Team A</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 2: Define Team A ({teamName})</p>
           <div className="mt-2 grid grid-cols-2 gap-3">
             <button
               type="button"
@@ -265,7 +279,7 @@ export default function NewMatchPage() {
                 teamAMode === "roster" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-900"
               }`}
             >
-              Select from Roster
+              Select from My Roster
             </button>
             <button
               type="button"
