@@ -352,6 +352,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
   const [state, dispatch] = useReducer(createReducer(config), config, buildInitialState);
   const [nameMode, setNameMode] = useState<"real" | "nickname">("real");
   const [isSavingPoint, setIsSavingPoint] = useState(false);
+  const [pointSaveError, setPointSaveError] = useState("");
   const hasTriggeredFinishRef = useRef(false);
 
   const getDisplayPlayerName = (player: CourtPlayer): string =>
@@ -399,13 +400,17 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
   const logPointToDatabase = useCallback(
     async (winner: "teamA" | "teamB", endingType: string, strokeType: string | null) => {
       if (!matchId || !supabase || !hasSupabaseEnv) return;
-      await supabase.from("points").insert({
+      const isGuestServer = state.present.currentServerId.startsWith("team-a-guest-") || state.present.currentServerId.startsWith("team-b-guest-");
+      const { error } = await supabase.from("points").insert({
         match_id: matchId,
-        server_id: state.present.currentServerId,
+        server_id: isGuestServer ? null : state.present.currentServerId,
         point_winner_team: winner,
         ending_type: endingType,
         stroke_type: strokeType,
       });
+      if (error) {
+        throw new Error(error.message);
+      }
     },
     [matchId, state.present.currentServerId],
   );
@@ -413,9 +418,12 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
   const handleAce = useCallback(async () => {
     if (isSavingPoint || isInputDisabled) return;
     setIsSavingPoint(true);
+    setPointSaveError("");
     const winner: "teamA" | "teamB" = state.present.currentServerSide === "A" ? "teamA" : "teamB";
     try {
       await logPointToDatabase(winner, "Ace", null);
+    } catch (error) {
+      setPointSaveError(error instanceof Error ? error.message : "Failed to save point.");
     } finally {
       dispatch({ type: "ACE" });
       setIsSavingPoint(false);
@@ -425,9 +433,12 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
   const handleDoubleFault = useCallback(async () => {
     if (isSavingPoint || isInputDisabled) return;
     setIsSavingPoint(true);
+    setPointSaveError("");
     const winner: "teamA" | "teamB" = state.present.currentServerSide === "A" ? "teamB" : "teamA";
     try {
       await logPointToDatabase(winner, "Double Fault", null);
+    } catch (error) {
+      setPointSaveError(error instanceof Error ? error.message : "Failed to save point.");
     } finally {
       dispatch({ type: "DOUBLE_FAULT" });
       setIsSavingPoint(false);
@@ -442,9 +453,12 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
       if (!draftWinner || !draftOutcome) return;
 
       setIsSavingPoint(true);
+      setPointSaveError("");
       const winner: "teamA" | "teamB" = draftWinner === "A" ? "teamA" : "teamB";
       try {
         await logPointToDatabase(winner, draftOutcome, stroke);
+      } catch (error) {
+        setPointSaveError(error instanceof Error ? error.message : "Failed to save point.");
       } finally {
         dispatch({ type: "SET_STROKE", stroke });
         setIsSavingPoint(false);
@@ -523,6 +537,9 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
       </div>
 
       <div className="px-2 pt-2">
+        {pointSaveError && (
+          <div className="mb-2 rounded-md border border-red-400 bg-red-100 px-2 py-1 text-xs font-semibold text-red-800">{pointSaveError}</div>
+        )}
         <Scoreboard
           scoreState={state.present.scoreState}
           teamAName={teamADisplayName}
