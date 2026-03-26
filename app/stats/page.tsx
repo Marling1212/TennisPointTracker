@@ -71,6 +71,7 @@ export default function TeamStatsPage() {
 
     const { error } = await supabase.from("matches").delete().eq("id", matchId);
     if (error) {
+      console.error("Supabase Fetch Error:", error);
       setErrorMessage(error.message);
       return;
     }
@@ -91,6 +92,7 @@ export default function TeamStatsPage() {
 
       const { data: authData, error: authError } = await supabase.auth.getUser();
       if (authError || !authData.user) {
+        if (authError) console.error("Supabase Fetch Error:", authError);
         router.replace("/login");
         return;
       }
@@ -101,6 +103,7 @@ export default function TeamStatsPage() {
         .eq("id", authData.user.id)
         .maybeSingle();
       if (profileError) {
+        console.error("Supabase Fetch Error:", profileError);
         setErrorMessage(profileError.message);
         setIsLoading(false);
         return;
@@ -115,6 +118,7 @@ export default function TeamStatsPage() {
         .maybeSingle();
 
       if (teamError || !teamData) {
+        if (teamError) console.error("Supabase Fetch Error:", teamError);
         setErrorMessage(teamError?.message ?? "No team found for this account.");
         setIsLoading(false);
         return;
@@ -127,6 +131,7 @@ export default function TeamStatsPage() {
         .order("created_at", { ascending: true });
 
       if (playersError) {
+        console.error("Supabase Fetch Error:", playersError);
         setErrorMessage(playersError.message);
         setIsLoading(false);
         return;
@@ -138,10 +143,11 @@ export default function TeamStatsPage() {
       const { data: matchesData, error: matchesError } = await supabase
         .from("matches")
         .select("id, match_type, team_a_name, team_b_name, status, created_at")
-        .or(`team_a_name.eq.${teamData.name},team_b_name.eq.${teamData.name}`)
+        .eq("team_id", teamData.id)
         .order("created_at", { ascending: false });
 
       if (matchesError) {
+        console.error("Supabase Fetch Error:", matchesError);
         setErrorMessage(matchesError.message);
         setIsLoading(false);
         return;
@@ -165,6 +171,7 @@ export default function TeamStatsPage() {
         );
 
       if (pointsError) {
+        console.error("Supabase Fetch Error:", pointsError);
         setErrorMessage(pointsError.message);
         setIsLoading(false);
         return;

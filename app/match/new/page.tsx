@@ -28,6 +28,7 @@ type RosterPlayerRow = {
 export default function NewMatchPage() {
   const router = useRouter();
   const [roster, setRoster] = useState<CourtPlayer[]>([]);
+  const [teamId, setTeamId] = useState<string | null>(null);
   const [teamName, setTeamName] = useState("My Team");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -71,6 +72,7 @@ export default function NewMatchPage() {
         return;
       }
 
+      setTeamId(teamData.id);
       setTeamName(teamData.name);
 
       const { data: playerData, error: playerError } = await supabase
@@ -216,6 +218,10 @@ export default function NewMatchPage() {
       router.replace("/login");
       return;
     }
+    if (!teamId) {
+      setErrorMessage("Team not found. Please refresh and try again.");
+      return;
+    }
 
     const initialServer = serverCandidates.find((candidate) => candidate.id === initialServerId);
     if (!initialServer) return;
@@ -240,6 +246,7 @@ export default function NewMatchPage() {
     const { data: insertedMatch, error: insertError } = await supabase
       .from("matches")
       .insert({
+        team_id: teamId,
         match_type: matchFormat === "singles" ? "Singles" : "Doubles",
         status: "In Progress",
         team_a_name: payload.teamAName,
