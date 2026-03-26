@@ -6,6 +6,8 @@ import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 
 type MatchFormat = "singles" | "doubles";
 type OpponentMode = "roster" | "guest";
+type ScoringType = "Standard" | "No-Ad";
+type SetsFormat = "1 Set" | "Best of 3 Sets" | "Tiebreak Only";
 type Side = "A" | "B";
 
 type CourtPlayer = {
@@ -30,6 +32,8 @@ export default function NewMatchPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [matchFormat, setMatchFormat] = useState<MatchFormat>("singles");
+  const [scoringType, setScoringType] = useState<ScoringType>("Standard");
+  const [setsFormat, setSetsFormat] = useState<SetsFormat>("Best of 3 Sets");
   const [teamAMode, setTeamAMode] = useState<OpponentMode>("roster");
   const [teamARosterIds, setTeamARosterIds] = useState<string[]>([]);
   const [teamAGuestNames, setTeamAGuestNames] = useState<string[]>(["", ""]);
@@ -204,14 +208,20 @@ export default function NewMatchPage() {
   const hasValidInitialServer = serverCandidates.some((candidate) => candidate.id === initialServerId);
   const canStartMatch = isTeamsReady && hasValidInitialServer;
 
-  const startMatch = () => {
+  const startMatch = async () => {
     if (!canStartMatch) return;
+    if (!supabase || !hasSupabaseEnv) {
+      router.replace("/login");
+      return;
+    }
 
     const initialServer = serverCandidates.find((candidate) => candidate.id === initialServerId);
     if (!initialServer) return;
 
     const payload = {
       matchFormat,
+      scoringType,
+      setsFormat,
       teamAName: teamAMode === "roster" ? teamName : "Guest Team A",
       teamBName: teamBMode === "roster" ? `${teamName} Roster B` : "Guest Team B",
       teamAPlayers,
@@ -225,9 +235,27 @@ export default function NewMatchPage() {
       },
     };
 
+    const { data: insertedMatch, error: insertError } = await supabase
+      .from("matches")
+      .insert({
+        match_type: matchFormat === "singles" ? "Singles" : "Doubles",
+        status: "In Progress",
+        team_a_name: payload.teamAName,
+        team_b_name: payload.teamBName,
+        scoring_type: scoringType,
+        sets_format: setsFormat,
+      })
+      .select("id")
+      .single();
+
+    if (insertError || !insertedMatch) {
+      setErrorMessage(insertError?.message ?? "Unable to create match.");
+      return;
+    }
+
     const params = new URLSearchParams();
     params.set("setup", JSON.stringify(payload));
-    router.push(`/match/demo/play?${params.toString()}`);
+    router.push(`/match/${insertedMatch.id}/play?${params.toString()}`);
   };
 
   if (isLoading) {
@@ -266,6 +294,44 @@ export default function NewMatchPage() {
             >
               Doubles
             </button>
+          </div>
+        </div>
+
+        <div className="mt-6 space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 1B: Match Rules</p>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setScoringType("Standard")}
+              className={`rounded-xl px-3 py-3 text-sm font-semibold ${
+                scoringType === "Standard" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-900"
+              }`}
+            >
+              Standard (Ad)
+            </button>
+            <button
+              type="button"
+              onClick={() => setScoringType("No-Ad")}
+              className={`rounded-xl px-3 py-3 text-sm font-semibold ${
+                scoringType === "No-Ad" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-900"
+              }`}
+            >
+              No-Ad
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {(["1 Set", "Best of 3 Sets", "Tiebreak Only"] as SetsFormat[]).map((format) => (
+              <button
+                key={format}
+                type="button"
+                onClick={() => setSetsFormat(format)}
+                className={`rounded-xl px-2 py-3 text-xs font-semibold ${
+                  setsFormat === format ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-900"
+                }`}
+              >
+                {format}
+              </button>
+            ))}
           </div>
         </div>
 

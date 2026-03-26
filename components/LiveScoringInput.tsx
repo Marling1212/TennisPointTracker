@@ -25,9 +25,16 @@ type SetupData = {
   matchFormat?: MatchFormat;
   teamAName?: string;
   teamBName?: string;
+  scoringType?: "Standard" | "No-Ad";
+  setsFormat?: "1 Set" | "Best of 3 Sets" | "Tiebreak Only";
   teamAPlayers?: CourtPlayer[];
   teamBPlayers?: CourtPlayer[];
   initialServer?: { id?: string; name?: string; side?: TeamSide };
+};
+
+type MatchRow = {
+  scoring_type?: "Standard" | "No-Ad" | null;
+  sets_format?: "1 Set" | "Best of 3 Sets" | "Tiebreak Only" | null;
 };
 
 type MatchConfig = {
@@ -36,6 +43,8 @@ type MatchConfig = {
   teamBName: string;
   teamAPlayers: CourtPlayer[];
   teamBPlayers: CourtPlayer[];
+  scoringType: "Standard" | "No-Ad";
+  setsFormat: "1 Set" | "Best of 3 Sets" | "Tiebreak Only";
   initialServerId: string;
   initialServerSide: TeamSide;
   knownServers: Partial<Record<TeamSide, string>>;
@@ -91,7 +100,7 @@ const teamLabel = (side: TeamSide, config: MatchConfig): string => (side === "A"
 const teamPlayers = (side: TeamSide, config: MatchConfig): CourtPlayer[] =>
   side === "A" ? config.teamAPlayers : config.teamBPlayers;
 
-const buildConfig = (setupData: unknown): MatchConfig => {
+const buildConfig = (setupData: unknown, matchData?: MatchRow): MatchConfig => {
   const setup = (setupData ?? {}) as SetupData;
   const teamAPlayers: CourtPlayer[] = setup.teamAPlayers?.length
     ? setup.teamAPlayers
@@ -102,6 +111,8 @@ const buildConfig = (setupData: unknown): MatchConfig => {
   const initialServerId = setup.initialServer?.id ?? teamAPlayers[0].id;
   const initialServerSide = setup.initialServer?.side ?? "A";
   const matchFormat = setup.matchFormat ?? (teamAPlayers.length === 2 && teamBPlayers.length === 2 ? "doubles" : "singles");
+  const scoringType = matchData?.scoring_type ?? setup.scoringType ?? "Standard";
+  const setsFormat = matchData?.sets_format ?? setup.setsFormat ?? "Best of 3 Sets";
   const knownServers: Partial<Record<TeamSide, string>> =
     matchFormat === "singles"
       ? { A: teamAPlayers[0]?.id, B: teamBPlayers[0]?.id }
@@ -113,6 +124,8 @@ const buildConfig = (setupData: unknown): MatchConfig => {
     teamBName: setup.teamBName ?? "Team B",
     teamAPlayers,
     teamBPlayers,
+    scoringType,
+    setsFormat,
     initialServerId,
     initialServerSide,
     knownServers,
@@ -129,7 +142,8 @@ const buildInitialState = (config: MatchConfig): ReducerState => ({
       points: { teamA: 0, teamB: 0 },
       games: { teamA: 0, teamB: 0 },
       sets: { teamA: 0, teamB: 0 },
-      isTiebreak: false,
+      isTiebreak: config.setsFormat === "Tiebreak Only",
+      isMatchOver: false,
     },
   },
   history: [],
@@ -160,7 +174,8 @@ const finalizePoint = (state: ReducerState, payload: FinalPointPayload): Reducer
   const winnerSide = pointWinnerToSide(payload.pointWinner, state.present.currentServerSide);
   const winnerTeamKey = winnerSide === "A" ? "teamA" : "teamB";
   const previousScore = state.present.scoreState;
-  const nextScore = calculateNextScore(previousScore, winnerTeamKey, false);
+  const isNoAd = state.config.scoringType === "No-Ad";
+  const nextScore = calculateNextScore(previousScore, winnerTeamKey, isNoAd, state.config.setsFormat);
 
   const gameEnded =
     nextScore.games.teamA !== previousScore.games.teamA ||
@@ -326,11 +341,12 @@ const neutralButton = `${baseActionButton} border-2 border-slate-300 bg-slate-10
 
 type LiveScoringInputProps = {
   setupData?: unknown;
+  matchData?: MatchRow;
 };
 
-export default function LiveScoringInput({ setupData }: LiveScoringInputProps) {
+export default function LiveScoringInput({ setupData, matchData }: LiveScoringInputProps) {
   const router = useRouter();
-  const config = buildConfig(setupData);
+  const config = buildConfig(setupData, matchData);
   const [state, dispatch] = useReducer(createReducer(config), config, buildInitialState);
   const [nameMode, setNameMode] = useState<"real" | "nickname">("real");
 

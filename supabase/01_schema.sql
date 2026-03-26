@@ -38,6 +38,8 @@ create table if not exists public.matches (
   status text default 'In Progress',
   team_a_name text,
   team_b_name text,
+  scoring_type text check (scoring_type in ('Standard', 'No-Ad')),
+  sets_format text check (sets_format in ('1 Set', 'Best of 3 Sets', 'Tiebreak Only')),
   created_at timestamp with time zone default now()
 );
 

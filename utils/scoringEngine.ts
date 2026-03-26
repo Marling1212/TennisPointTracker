@@ -3,6 +3,7 @@ export interface ScoreState {
   games: { teamA: number; teamB: number };
   sets: { teamA: number; teamB: number };
   isTiebreak: boolean;
+  isMatchOver: boolean;
 }
 
 type TeamKey = "teamA" | "teamB";
@@ -26,7 +27,9 @@ const nextStandardPoint = (point: number | string): number | string => {
   return STANDARD_POINT_SEQUENCE[index + 1];
 };
 
-const withGameWon = (state: ScoreState, gameWinner: TeamKey): ScoreState => {
+const targetSetsToWin = (setsFormat: string): number => (setsFormat === "Best of 3 Sets" ? 2 : 1);
+
+const withGameWon = (state: ScoreState, gameWinner: TeamKey, setsFormat: string): ScoreState => {
   const games = {
     teamA: state.games.teamA + (gameWinner === "teamA" ? 1 : 0),
     teamB: state.games.teamB + (gameWinner === "teamB" ? 1 : 0),
@@ -41,14 +44,17 @@ const withGameWon = (state: ScoreState, gameWinner: TeamKey): ScoreState => {
 
   if (hasStandardSetWinner) {
     const setWinner: TeamKey = games.teamA > games.teamB ? "teamA" : "teamB";
+    const sets = {
+      teamA: state.sets.teamA + (setWinner === "teamA" ? 1 : 0),
+      teamB: state.sets.teamB + (setWinner === "teamB" ? 1 : 0),
+    };
+    const isMatchOver = sets[setWinner] >= targetSetsToWin(setsFormat);
     return {
       points: resetPoints(),
       games: { teamA: 0, teamB: 0 },
-      sets: {
-        teamA: state.sets.teamA + (setWinner === "teamA" ? 1 : 0),
-        teamB: state.sets.teamB + (setWinner === "teamB" ? 1 : 0),
-      },
+      sets,
       isTiebreak: false,
+      isMatchOver,
     };
   }
 
@@ -57,10 +63,11 @@ const withGameWon = (state: ScoreState, gameWinner: TeamKey): ScoreState => {
     games,
     sets: { ...state.sets },
     isTiebreak: shouldEnterTiebreak,
+    isMatchOver: false,
   };
 };
 
-const withTiebreakPoint = (state: ScoreState, pointWinner: TeamKey): ScoreState => {
+const withTiebreakPoint = (state: ScoreState, pointWinner: TeamKey, setsFormat: string): ScoreState => {
   const tiebreakPoints = {
     teamA: toNumericPoint(state.points.teamA),
     teamB: toNumericPoint(state.points.teamB),
@@ -76,24 +83,37 @@ const withTiebreakPoint = (state: ScoreState, pointWinner: TeamKey): ScoreState 
       games: { ...state.games },
       sets: { ...state.sets },
       isTiebreak: true,
+      isMatchOver: false,
     };
   }
 
   const setWinner: TeamKey = tiebreakPoints.teamA > tiebreakPoints.teamB ? "teamA" : "teamB";
+  const sets = {
+    teamA: state.sets.teamA + (setWinner === "teamA" ? 1 : 0),
+    teamB: state.sets.teamB + (setWinner === "teamB" ? 1 : 0),
+  };
+  const isMatchOver = sets[setWinner] >= targetSetsToWin(setsFormat);
   return {
     points: resetPoints(),
     games: { teamA: 0, teamB: 0 },
-    sets: {
-      teamA: state.sets.teamA + (setWinner === "teamA" ? 1 : 0),
-      teamB: state.sets.teamB + (setWinner === "teamB" ? 1 : 0),
-    },
+    sets,
     isTiebreak: false,
+    isMatchOver,
   };
 };
 
-export function calculateNextScore(currentState: ScoreState, pointWinner: TeamKey, isNoAd: boolean): ScoreState {
+export function calculateNextScore(
+  currentState: ScoreState,
+  pointWinner: TeamKey,
+  isNoAd: boolean,
+  setsFormat: string,
+): ScoreState {
+  if (currentState.isMatchOver) {
+    return currentState;
+  }
+
   if (currentState.isTiebreak) {
-    return withTiebreakPoint(currentState, pointWinner);
+    return withTiebreakPoint(currentState, pointWinner, setsFormat);
   }
 
   const loser = getOpponent(pointWinner);
@@ -102,7 +122,7 @@ export function calculateNextScore(currentState: ScoreState, pointWinner: TeamKe
 
   // No-Ad: deuce point decides game immediately.
   if (isNoAd && winnerPoint === 40 && loserPoint === 40) {
-    return withGameWon(currentState, pointWinner);
+    return withGameWon(currentState, pointWinner, setsFormat);
   }
 
   // Ad scoring branch.
@@ -116,12 +136,13 @@ export function calculateNextScore(currentState: ScoreState, pointWinner: TeamKe
         games: { ...currentState.games },
         sets: { ...currentState.sets },
         isTiebreak: false,
+        isMatchOver: false,
       };
     }
 
     // Winner converts advantage into game.
     if (winnerPoint === "Ad") {
-      return withGameWon(currentState, pointWinner);
+      return withGameWon(currentState, pointWinner, setsFormat);
     }
 
     // Receiver/winner erases opponent advantage back to deuce.
@@ -131,13 +152,14 @@ export function calculateNextScore(currentState: ScoreState, pointWinner: TeamKe
         games: { ...currentState.games },
         sets: { ...currentState.sets },
         isTiebreak: false,
+        isMatchOver: false,
       };
     }
   }
 
   // Standard game winning at 40 vs <=30.
   if (winnerPoint === 40 && typeof loserPoint === "number" && loserPoint <= 30) {
-    return withGameWon(currentState, pointWinner);
+    return withGameWon(currentState, pointWinner, setsFormat);
   }
 
   // Standard point progression.
@@ -149,5 +171,6 @@ export function calculateNextScore(currentState: ScoreState, pointWinner: TeamKe
     games: { ...currentState.games },
     sets: { ...currentState.sets },
     isTiebreak: false,
+    isMatchOver: false,
   };
 }
