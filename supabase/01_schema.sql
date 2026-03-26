@@ -48,6 +48,7 @@ create table if not exists public.points (
   id uuid primary key default gen_random_uuid(),
   match_id uuid not null references public.matches (id) on delete cascade,
   server_id uuid references public.players (id),
+  action_player_id uuid references public.players (id),
   point_winner_team text check (point_winner_team in ('teamA', 'teamB')),
   ending_type text check (ending_type in ('Winner', 'Unforced Error', 'Forced Error', 'Ace', 'Double Fault')),
   stroke_type text,

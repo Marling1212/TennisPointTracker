@@ -7,7 +7,15 @@ import { calculateNextScore, type ScoreState } from "@/utils/scoringEngine";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 
 type TeamSide = "A" | "B";
-type Phase = "serve-first" | "serve-second" | "point-winner" | "point-outcome" | "stroke" | "awaiting-server-selection" | "match-over";
+type Phase =
+  | "serve-first"
+  | "serve-second"
+  | "point-winner"
+  | "point-outcome"
+  | "action-player"
+  | "stroke"
+  | "awaiting-server-selection"
+  | "match-over";
 type Player = TeamSide;
 type Stroke = "Forehand" | "Backhand" | "Volley" | "Overhead";
 type Outcome = "Winner" | "Unforced Error" | "Forced Error";
@@ -55,6 +63,8 @@ type PointDraft = {
   serveSequence: ServeEvent[];
   pointWinner?: Player;
   pointOutcome?: Outcome;
+  /** Player who hit the winner or committed the error (set before stroke). */
+  actionPlayerId?: string;
 };
 
 type FinalPointPayload = {
@@ -63,6 +73,7 @@ type FinalPointPayload = {
   pointOutcome: Outcome | "Ace" | "Double Fault";
   stroke?: Stroke;
   strokeAssignedTo?: Player;
+  actionPlayerId?: string;
 };
 
 type PresentState = {
@@ -90,12 +101,19 @@ type Action =
   | { type: "DOUBLE_FAULT" }
   | { type: "SET_POINT_WINNER"; winner: Player }
   | { type: "SET_POINT_OUTCOME"; outcome: Outcome }
+  | { type: "SET_ACTION_PLAYER"; playerId: string }
   | { type: "SET_STROKE"; stroke: Stroke }
   | { type: "SELECT_SERVER_FOR_TEAM"; playerId: string }
   | { type: "UNDO" };
 
 const otherPlayer = (player: Player): Player => (player === "A" ? "B" : "A");
 const otherTeam = (side: TeamSide): TeamSide => (side === "A" ? "B" : "A");
+
+/** Team whose player performed the winner or error (for doubles selection UI). */
+const actionPlayerSelectionTeam = (draft: PointDraft): TeamSide | null => {
+  if (!draft.pointWinner || !draft.pointOutcome) return null;
+  return draft.pointOutcome === "Winner" ? draft.pointWinner : otherPlayer(draft.pointWinner);
+};
 
 const teamPlayers = (side: TeamSide, config: MatchConfig): CourtPlayer[] =>
   side === "A" ? config.teamAPlayers : config.teamBPlayers;
@@ -183,9 +201,38 @@ const finalizePoint = (state: ReducerState, payload: FinalPointPayload): Reducer
     nextScore.sets.teamA !== previousScore.sets.teamA ||
     nextScore.sets.teamB !== previousScore.sets.teamB;
 
-  const nextServerSide = gameEnded ? otherTeam(state.present.currentServerSide) : state.present.currentServerSide;
-  const nextKnownServer = state.knownServers[nextServerSide];
-  const needsIntercept = gameEnded && state.config.matchFormat === "doubles" && !nextKnownServer;
+  const finishedSide = state.present.currentServerSide;
+  const finishedServerId = state.present.currentServerId;
+
+  let nextKnownServers = state.knownServers;
+  let nextServerSide = state.present.currentServerSide;
+  let nextServerId = state.present.currentServerId;
+
+  if (gameEnded) {
+    nextKnownServers = { ...state.knownServers, [finishedSide]: finishedServerId };
+    nextServerSide = otherTeam(finishedSide);
+
+    if (state.config.matchFormat === "doubles") {
+      const nextTeamPlayers = teamPlayers(nextServerSide, state.config);
+      if (nextTeamPlayers.length >= 2) {
+        const prevOnNext = nextKnownServers[nextServerSide];
+        if (prevOnNext !== undefined) {
+          const partner = nextTeamPlayers.find((p) => p.id !== prevOnNext);
+          nextServerId = partner?.id ?? prevOnNext;
+          nextKnownServers = { ...nextKnownServers, [nextServerSide]: nextServerId };
+        }
+      }
+    } else {
+      nextServerId = teamPlayers(nextServerSide, state.config)[0]?.id ?? finishedServerId;
+    }
+  }
+
+  const needsIntercept =
+    gameEnded &&
+    state.config.matchFormat === "doubles" &&
+    teamPlayers(nextServerSide, state.config).length >= 2 &&
+    nextKnownServers[nextServerSide] === undefined;
+
   const isMatchOver = nextScore.isMatchOver;
 
   return withHistory(
@@ -196,10 +243,11 @@ const finalizePoint = (state: ReducerState, payload: FinalPointPayload): Reducer
       draft: { serveSequence: [] },
       scoreState: nextScore,
       currentServerSide: nextServerSide,
-      currentServerId: gameEnded ? nextKnownServer ?? state.present.currentServerId : state.present.currentServerId,
+      currentServerId: gameEnded ? (needsIntercept ? state.present.currentServerId : nextServerId) : state.present.currentServerId,
       awaitingServerSide: isMatchOver ? undefined : needsIntercept ? nextServerSide : undefined,
     },
     payload,
+    nextKnownServers,
   );
 };
 
@@ -279,6 +327,7 @@ function createReducer(config: MatchConfig) {
           serveSequence: [...present.draft.serveSequence, "ACE"],
           pointWinner: "Server",
           pointOutcome: "Ace",
+          actionPlayerId: present.currentServerId,
         };
         return finalizePoint(state, payload);
       }
@@ -289,6 +338,7 @@ function createReducer(config: MatchConfig) {
           serveSequence: [...present.draft.serveSequence, "DOUBLE FAULT"],
           pointWinner: "Receiver",
           pointOutcome: "Double Fault",
+          actionPlayerId: present.currentServerId,
         };
         return finalizePoint(state, payload);
       }
@@ -302,15 +352,42 @@ function createReducer(config: MatchConfig) {
       }
       case "SET_POINT_OUTCOME": {
         if (present.phase !== "point-outcome") return state;
+        if (!present.draft.pointWinner) return state;
+        const outcome = action.outcome;
+
+        if (config.matchFormat === "doubles") {
+          return withHistory(state, {
+            ...present,
+            phase: "action-player",
+            draft: { ...present.draft, pointOutcome: outcome },
+          });
+        }
+
+        const pw = present.draft.pointWinner;
+        const actionPlayerId =
+          outcome === "Winner" ? teamPlayers(pw, config)[0]?.id : teamPlayers(otherPlayer(pw), config)[0]?.id;
+
         return withHistory(state, {
           ...present,
           phase: "stroke",
-          draft: { ...present.draft, pointOutcome: action.outcome },
+          draft: { ...present.draft, pointOutcome: outcome, actionPlayerId },
+        });
+      }
+      case "SET_ACTION_PLAYER": {
+        if (present.phase !== "action-player") return state;
+        const side = actionPlayerSelectionTeam(present.draft);
+        if (!side) return state;
+        const options = teamPlayers(side, config);
+        if (!options.some((p) => p.id === action.playerId)) return state;
+        return withHistory(state, {
+          ...present,
+          phase: "stroke",
+          draft: { ...present.draft, actionPlayerId: action.playerId },
         });
       }
       case "SET_STROKE": {
         if (present.phase !== "stroke") return state;
-        if (!present.draft.pointWinner || !present.draft.pointOutcome) return state;
+        if (!present.draft.pointWinner || !present.draft.pointOutcome || !present.draft.actionPlayerId) return state;
 
         const strokeAssignedTo =
           present.draft.pointOutcome === "Winner"
@@ -323,6 +400,7 @@ function createReducer(config: MatchConfig) {
           pointOutcome: present.draft.pointOutcome,
           stroke: action.stroke,
           strokeAssignedTo,
+          actionPlayerId: present.draft.actionPlayerId,
         };
 
         return finalizePoint(state, payload);
@@ -339,6 +417,17 @@ const winnerButton = `${baseActionButton} border-2 border-emerald-200 bg-emerald
 const unforcedErrorButton = `${baseActionButton} border-2 border-red-200 bg-red-600 text-white`;
 const forcedErrorButton = `${baseActionButton} border-2 border-orange-200 bg-orange-500 text-white`;
 const neutralButton = `${baseActionButton} border-2 border-slate-300 bg-slate-100 text-slate-900`;
+
+const playerIdForPointsTable = (id: string | null | undefined): string | null => {
+  if (!id) return null;
+  if (id.startsWith("team-a-guest-") || id.startsWith("team-b-guest-")) return null;
+  return id;
+};
+
+const whoHitHeading = (draft: PointDraft): string => {
+  if (!draft.pointOutcome) return "Who hit it?";
+  return draft.pointOutcome === "Winner" ? "Who hit the winner?" : "Who hit the error?";
+};
 
 type LiveScoringInputProps = {
   setupData?: unknown;
@@ -398,12 +487,20 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
   const isInputDisabled = state.present.scoreState.isMatchOver || isSavingPoint;
 
   const logPointToDatabase = useCallback(
-    async (winner: "teamA" | "teamB", endingType: string, strokeType: string | null) => {
+    async (
+      winner: "teamA" | "teamB",
+      endingType: string,
+      strokeType: string | null,
+      actionPlayerId: string | null,
+    ) => {
       if (!matchId || !supabase || !hasSupabaseEnv) return;
-      const isGuestServer = state.present.currentServerId.startsWith("team-a-guest-") || state.present.currentServerId.startsWith("team-b-guest-");
+      const isGuestServer =
+        state.present.currentServerId.startsWith("team-a-guest-") ||
+        state.present.currentServerId.startsWith("team-b-guest-");
       const { error } = await supabase.from("points").insert({
         match_id: matchId,
         server_id: isGuestServer ? null : state.present.currentServerId,
+        action_player_id: playerIdForPointsTable(actionPlayerId),
         point_winner_team: winner,
         ending_type: endingType,
         stroke_type: strokeType,
@@ -421,14 +518,14 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
     setPointSaveError("");
     const winner: "teamA" | "teamB" = state.present.currentServerSide === "A" ? "teamA" : "teamB";
     try {
-      await logPointToDatabase(winner, "Ace", null);
+      await logPointToDatabase(winner, "Ace", null, state.present.currentServerId);
     } catch (error) {
       setPointSaveError(error instanceof Error ? error.message : "Failed to save point.");
     } finally {
       dispatch({ type: "ACE" });
       setIsSavingPoint(false);
     }
-  }, [isInputDisabled, isSavingPoint, logPointToDatabase, state.present.currentServerSide]);
+  }, [isInputDisabled, isSavingPoint, logPointToDatabase, state.present.currentServerId, state.present.currentServerSide]);
 
   const handleDoubleFault = useCallback(async () => {
     if (isSavingPoint || isInputDisabled) return;
@@ -436,14 +533,14 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
     setPointSaveError("");
     const winner: "teamA" | "teamB" = state.present.currentServerSide === "A" ? "teamB" : "teamA";
     try {
-      await logPointToDatabase(winner, "Double Fault", null);
+      await logPointToDatabase(winner, "Double Fault", null, state.present.currentServerId);
     } catch (error) {
       setPointSaveError(error instanceof Error ? error.message : "Failed to save point.");
     } finally {
       dispatch({ type: "DOUBLE_FAULT" });
       setIsSavingPoint(false);
     }
-  }, [isInputDisabled, isSavingPoint, logPointToDatabase, state.present.currentServerSide]);
+  }, [isInputDisabled, isSavingPoint, logPointToDatabase, state.present.currentServerId, state.present.currentServerSide]);
 
   const handleSetStroke = useCallback(
     async (stroke: Stroke) => {
@@ -456,7 +553,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
       setPointSaveError("");
       const winner: "teamA" | "teamB" = draftWinner === "A" ? "teamA" : "teamB";
       try {
-        await logPointToDatabase(winner, draftOutcome, stroke);
+        await logPointToDatabase(winner, draftOutcome, stroke, state.present.draft.actionPlayerId ?? null);
       } catch (error) {
         setPointSaveError(error instanceof Error ? error.message : "Failed to save point.");
       } finally {
@@ -464,13 +561,22 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
         setIsSavingPoint(false);
       }
     },
-    [isInputDisabled, isSavingPoint, logPointToDatabase, state.present.draft.pointOutcome, state.present.draft.pointWinner],
+    [
+      isInputDisabled,
+      isSavingPoint,
+      logPointToDatabase,
+      state.present.draft.actionPlayerId,
+      state.present.draft.pointOutcome,
+      state.present.draft.pointWinner,
+    ],
   );
 
   const activeSideForStep: TeamSide | null =
     state.present.phase === "serve-first" || state.present.phase === "serve-second"
       ? state.present.currentServerSide
-      : state.present.phase === "point-outcome" || state.present.phase === "stroke"
+      : state.present.phase === "point-outcome" ||
+          state.present.phase === "action-player" ||
+          state.present.phase === "stroke"
         ? state.present.draft.pointWinner ?? null
         : null;
   const phaseLabel =
@@ -482,11 +588,13 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
           ? "State 2: Point Winner"
           : state.present.phase === "point-outcome"
             ? "State 3: Point Outcome"
-            : state.present.phase === "stroke"
-              ? "State 4: Stroke"
-              : state.present.phase === "awaiting-server-selection"
-                ? "AwaitingServerSelection"
-                : "Match Over";
+            : state.present.phase === "action-player"
+              ? "State 3b: Who hit it?"
+              : state.present.phase === "stroke"
+                ? "State 4: Stroke"
+                : state.present.phase === "awaiting-server-selection"
+                  ? "AwaitingServerSelection"
+                  : "Match Over";
 
   const matchWinnerSide: TeamSide | null =
     state.present.scoreState.sets.teamA > state.present.scoreState.sets.teamB
@@ -624,6 +732,23 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
               </>
             )}
 
+            {state.present.phase === "action-player" && actionPlayerSelectionTeam(state.present.draft) === "A" && (
+              <>
+                <p className="text-xs font-semibold text-slate-300">{whoHitHeading(state.present.draft)}</p>
+                {teamPlayers("A", config).map((player) => (
+                  <button
+                    key={player.id}
+                    type="button"
+                    className={neutralButton}
+                    onClick={() => dispatch({ type: "SET_ACTION_PLAYER", playerId: player.id })}
+                    disabled={isInputDisabled}
+                  >
+                    {getDisplayPlayerName(player)}
+                  </button>
+                ))}
+              </>
+            )}
+
             {activeSideForStep === "A" && state.present.phase === "stroke" && (
               <>
                 <button type="button" className={neutralButton} onClick={() => void handleSetStroke("Forehand")} disabled={isInputDisabled}>
@@ -715,6 +840,23 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
                 >
                   Forced Error
                 </button>
+              </>
+            )}
+
+            {state.present.phase === "action-player" && actionPlayerSelectionTeam(state.present.draft) === "B" && (
+              <>
+                <p className="text-xs font-semibold text-slate-300">{whoHitHeading(state.present.draft)}</p>
+                {teamPlayers("B", config).map((player) => (
+                  <button
+                    key={player.id}
+                    type="button"
+                    className={neutralButton}
+                    onClick={() => dispatch({ type: "SET_ACTION_PLAYER", playerId: player.id })}
+                    disabled={isInputDisabled}
+                  >
+                    {getDisplayPlayerName(player)}
+                  </button>
+                ))}
               </>
             )}
 
