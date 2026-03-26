@@ -93,8 +93,12 @@ const teamPlayers = (side: TeamSide, config: MatchConfig): CourtPlayer[] =>
 
 const buildConfig = (setupData: unknown): MatchConfig => {
   const setup = (setupData ?? {}) as SetupData;
-  const teamAPlayers = setup.teamAPlayers?.length ? setup.teamAPlayers : [{ id: "team-a-player-1", name: "Team A", side: "A" }];
-  const teamBPlayers = setup.teamBPlayers?.length ? setup.teamBPlayers : [{ id: "team-b-player-1", name: "Team B", side: "B" }];
+  const teamAPlayers: CourtPlayer[] = setup.teamAPlayers?.length
+    ? setup.teamAPlayers
+    : [{ id: "team-a-player-1", name: "Team A", side: "A" }];
+  const teamBPlayers: CourtPlayer[] = setup.teamBPlayers?.length
+    ? setup.teamBPlayers
+    : [{ id: "team-b-player-1", name: "Team B", side: "B" }];
   const initialServerId = setup.initialServer?.id ?? teamAPlayers[0].id;
   const initialServerSide = setup.initialServer?.side ?? "A";
   const matchFormat = setup.matchFormat ?? (teamAPlayers.length === 2 && teamBPlayers.length === 2 ? "doubles" : "singles");

@@ -109,11 +109,10 @@ export function calculateNextScore(currentState: ScoreState, pointWinner: TeamKe
   if (!isNoAd) {
     const isDeuce = winnerPoint === 40 && loserPoint === 40;
     if (isDeuce) {
+      const deuceAdvantagePoints =
+        pointWinner === "teamA" ? { teamA: "Ad" as string | number, teamB: 40 as string | number } : { teamA: 40 as string | number, teamB: "Ad" as string | number };
       return {
-        points: {
-          [pointWinner]: "Ad",
-          [loser]: 40,
-        },
+        points: deuceAdvantagePoints,
         games: { ...currentState.games },
         sets: { ...currentState.sets },
         isTiebreak: false,

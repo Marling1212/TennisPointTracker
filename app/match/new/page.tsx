@@ -81,7 +81,7 @@ export default function NewMatchPage() {
 
   const teamAPlayers: CourtPlayer[] = myTeamIds
     .slice(0, requiredPlayers)
-    .map((id, index) => {
+    .map((id, index): CourtPlayer => {
       const player = roster.find((entry) => entry.id === id);
       return {
         id,
@@ -97,7 +97,7 @@ export default function NewMatchPage() {
     opponentMode === "roster"
       ? opponentRosterIds
           .slice(0, requiredPlayers)
-          .map((id, index) => {
+          .map((id, index): CourtPlayer => {
             const player = roster.find((entry) => entry.id === id);
             return {
               id,
@@ -108,12 +108,14 @@ export default function NewMatchPage() {
             };
           })
           .filter((entry) => entry.name.length > 0)
-      : guestOpponentNames.slice(0, requiredPlayers).map((name, index) => ({
-          id: `guest-${index + 1}`,
-          name: name.trim() || `Guest ${index + 1}`,
-          side: "B",
-          slot: index + 1,
-        }));
+      : guestOpponentNames.slice(0, requiredPlayers).map(
+          (name, index): CourtPlayer => ({
+            id: `guest-${index + 1}`,
+            name: name.trim() || `Guest ${index + 1}`,
+            side: "B",
+            slot: index + 1,
+          }),
+        );
 
   const serverCandidates = [...teamAPlayers, ...teamBPlayers];
   const hasValidInitialServer = serverCandidates.some((candidate) => candidate.id === initialServerId);
