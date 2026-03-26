@@ -102,6 +102,37 @@ const withTiebreakPoint = (state: ScoreState, pointWinner: TeamKey, setsFormat: 
   };
 };
 
+/**
+ * True when the upcoming point is a break point: the receiver can win the game on this point.
+ * Regular games only (not tiebreak). Call with score state **before** the point is played.
+ *
+ * Server side is court side "A" | "B" (same as LiveScoringInput currentServerSide).
+ */
+export function isBreakPointBeforePoint(
+  state: ScoreState,
+  serverSide: "A" | "B",
+  isNoAd: boolean,
+): boolean {
+  if (state.isMatchOver || state.isTiebreak) return false;
+
+  const serverKey: TeamKey = serverSide === "A" ? "teamA" : "teamB";
+  const receiverKey: TeamKey = serverSide === "A" ? "teamB" : "teamA";
+
+  const serverPoints = state.points[serverKey];
+  const receiverPoints = state.points[receiverKey];
+
+  if (isNoAd && receiverPoints === 40 && serverPoints === 40) return true;
+
+  if (!isNoAd) {
+    if (receiverPoints === "Ad") return true;
+    if (receiverPoints === 40 && serverPoints === 40) return false;
+  }
+
+  if (receiverPoints === 40 && typeof serverPoints === "number" && serverPoints <= 30) return true;
+
+  return false;
+}
+
 export function calculateNextScore(
   currentState: ScoreState,
   pointWinner: TeamKey,

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Scoreboard from "@/components/Scoreboard";
-import { calculateNextScore, type ScoreState } from "@/utils/scoringEngine";
+import { calculateNextScore, isBreakPointBeforePoint, type ScoreState } from "@/utils/scoringEngine";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 
 type TeamSide = "A" | "B";
@@ -492,11 +492,14 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
       endingType: string,
       strokeType: string | null,
       actionPlayerId: string | null,
+      isBreakPoint: boolean,
     ) => {
       if (!matchId || !supabase || !hasSupabaseEnv) return;
       const isGuestServer =
         state.present.currentServerId.startsWith("team-a-guest-") ||
         state.present.currentServerId.startsWith("team-b-guest-");
+      const serving_team: "teamA" | "teamB" =
+        state.present.currentServerSide === "A" ? "teamA" : "teamB";
       const { error } = await supabase.from("points").insert({
         match_id: matchId,
         server_id: isGuestServer ? null : state.present.currentServerId,
@@ -504,12 +507,14 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
         point_winner_team: winner,
         ending_type: endingType,
         stroke_type: strokeType,
+        is_break_point: isBreakPoint,
+        serving_team,
       });
       if (error) {
         throw new Error(error.message);
       }
     },
-    [matchId, state.present.currentServerId],
+    [matchId, state.present.currentServerId, state.present.currentServerSide],
   );
 
   const handleAce = useCallback(async () => {
@@ -517,30 +522,50 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
     setIsSavingPoint(true);
     setPointSaveError("");
     const winner: "teamA" | "teamB" = state.present.currentServerSide === "A" ? "teamA" : "teamB";
+    const isNoAd = config.scoringType === "No-Ad";
+    const isBp = isBreakPointBeforePoint(state.present.scoreState, state.present.currentServerSide, isNoAd);
     try {
-      await logPointToDatabase(winner, "Ace", null, state.present.currentServerId);
+      await logPointToDatabase(winner, "Ace", null, state.present.currentServerId, isBp);
     } catch (error) {
       setPointSaveError(error instanceof Error ? error.message : "Failed to save point.");
     } finally {
       dispatch({ type: "ACE" });
       setIsSavingPoint(false);
     }
-  }, [isInputDisabled, isSavingPoint, logPointToDatabase, state.present.currentServerId, state.present.currentServerSide]);
+  }, [
+    config.scoringType,
+    isInputDisabled,
+    isSavingPoint,
+    logPointToDatabase,
+    state.present.currentServerId,
+    state.present.currentServerSide,
+    state.present.scoreState,
+  ]);
 
   const handleDoubleFault = useCallback(async () => {
     if (isSavingPoint || isInputDisabled) return;
     setIsSavingPoint(true);
     setPointSaveError("");
     const winner: "teamA" | "teamB" = state.present.currentServerSide === "A" ? "teamB" : "teamA";
+    const isNoAd = config.scoringType === "No-Ad";
+    const isBp = isBreakPointBeforePoint(state.present.scoreState, state.present.currentServerSide, isNoAd);
     try {
-      await logPointToDatabase(winner, "Double Fault", null, state.present.currentServerId);
+      await logPointToDatabase(winner, "Double Fault", null, state.present.currentServerId, isBp);
     } catch (error) {
       setPointSaveError(error instanceof Error ? error.message : "Failed to save point.");
     } finally {
       dispatch({ type: "DOUBLE_FAULT" });
       setIsSavingPoint(false);
     }
-  }, [isInputDisabled, isSavingPoint, logPointToDatabase, state.present.currentServerId, state.present.currentServerSide]);
+  }, [
+    config.scoringType,
+    isInputDisabled,
+    isSavingPoint,
+    logPointToDatabase,
+    state.present.currentServerId,
+    state.present.currentServerSide,
+    state.present.scoreState,
+  ]);
 
   const handleSetStroke = useCallback(
     async (stroke: Stroke) => {
@@ -552,8 +577,10 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
       setIsSavingPoint(true);
       setPointSaveError("");
       const winner: "teamA" | "teamB" = draftWinner === "A" ? "teamA" : "teamB";
+      const isNoAd = config.scoringType === "No-Ad";
+      const isBp = isBreakPointBeforePoint(state.present.scoreState, state.present.currentServerSide, isNoAd);
       try {
-        await logPointToDatabase(winner, draftOutcome, stroke, state.present.draft.actionPlayerId ?? null);
+        await logPointToDatabase(winner, draftOutcome, stroke, state.present.draft.actionPlayerId ?? null, isBp);
       } catch (error) {
         setPointSaveError(error instanceof Error ? error.message : "Failed to save point.");
       } finally {
@@ -562,12 +589,15 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
       }
     },
     [
+      config.scoringType,
       isInputDisabled,
       isSavingPoint,
       logPointToDatabase,
+      state.present.currentServerSide,
       state.present.draft.actionPlayerId,
       state.present.draft.pointOutcome,
       state.present.draft.pointWinner,
+      state.present.scoreState,
     ],
   );
 

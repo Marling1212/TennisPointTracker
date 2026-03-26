@@ -52,6 +52,8 @@ create table if not exists public.points (
   point_winner_team text check (point_winner_team in ('teamA', 'teamB')),
   ending_type text check (ending_type in ('Winner', 'Unforced Error', 'Forced Error', 'Ace', 'Double Fault')),
   stroke_type text,
+  is_break_point boolean not null default false,
+  serving_team text check (serving_team in ('teamA', 'teamB')),
   created_at timestamp with time zone default now()
 );
 

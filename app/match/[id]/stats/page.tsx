@@ -20,6 +20,8 @@ type PointRow = {
   ending_type: "Winner" | "Unforced Error" | "Forced Error" | "Ace" | "Double Fault" | null;
   server_id: string | null;
   action_player_id: string | null;
+  is_break_point?: boolean | null;
+  serving_team?: "teamA" | "teamB" | null;
 };
 
 type PlayerProfile = {
@@ -306,7 +308,7 @@ export default function MatchStatsPage() {
 
       const { data: pointsData, error: pointsError } = await supabase
         .from("points")
-        .select("id, point_winner_team, ending_type, server_id, action_player_id")
+        .select("id, point_winner_team, ending_type, server_id, action_player_id, is_break_point, serving_team")
         .eq("match_id", matchId);
 
       if (pointsError) {
@@ -380,6 +382,37 @@ export default function MatchStatsPage() {
     }
 
     return { teamA, teamB };
+  }, [points]);
+
+  const breakPointStats = useMemo(() => {
+    let oppA = 0;
+    let convA = 0;
+    let oppB = 0;
+    let convB = 0;
+    let savedA = 0;
+    let savedB = 0;
+
+    for (const pt of points) {
+      if (!pt.is_break_point || !pt.serving_team || !pt.point_winner_team) continue;
+
+      const receiverTeam: "teamA" | "teamB" = pt.serving_team === "teamA" ? "teamB" : "teamA";
+
+      if (receiverTeam === "teamA") {
+        oppA += 1;
+        if (pt.point_winner_team === "teamA") convA += 1;
+      } else {
+        oppB += 1;
+        if (pt.point_winner_team === "teamB") convB += 1;
+      }
+
+      if (pt.serving_team === "teamA" && pt.point_winner_team === "teamA") savedA += 1;
+      if (pt.serving_team === "teamB" && pt.point_winner_team === "teamB") savedB += 1;
+    }
+
+    return {
+      teamA: { converted: convA, opportunities: oppA, saved: savedA },
+      teamB: { converted: convB, opportunities: oppB, saved: savedB },
+    };
   }, [points]);
 
   const isDoubles = match?.match_type === "Doubles";
@@ -481,13 +514,42 @@ export default function MatchStatsPage() {
             const bText = formatStatCell(row.key, "B", stats, useSplitCells, splitA, splitB);
 
             return (
-              <div key={row.key} className="grid grid-cols-3 items-center border-b-2 border-slate-300 px-3 py-2 last:border-b-0">
+              <div key={row.key} className="grid grid-cols-3 items-center border-b-2 border-slate-300 px-3 py-2">
                 <p className={`text-left text-sm ${aWins ? "font-black text-emerald-700" : "text-slate-900"}`}>{aText}</p>
                 <p className="text-center text-sm font-semibold text-slate-900">{row.label}</p>
                 <p className={`text-right text-sm ${bWins ? "font-black text-emerald-700" : "text-slate-900"}`}>{bText}</p>
               </div>
             );
           })}
+
+          {(() => {
+            const bpA = breakPointStats.teamA;
+            const bpB = breakPointStats.teamB;
+            const rate = (c: number, o: number) => (o === 0 ? null : c / o);
+            const rA = rate(bpA.converted, bpA.opportunities);
+            const rB = rate(bpB.converted, bpB.opportunities);
+            let aGreen = false;
+            let bGreen = false;
+            if (rA !== null && rB !== null) {
+              if (rA > rB) aGreen = true;
+              else if (rB > rA) bGreen = true;
+            } else if (rA !== null && rB === null) {
+              aGreen = true;
+            } else if (rB !== null && rA === null) {
+              bGreen = true;
+            }
+
+            const aText = `${bpA.converted} / ${bpA.opportunities}`;
+            const bText = `${bpB.converted} / ${bpB.opportunities}`;
+
+            return (
+              <div className="grid grid-cols-3 items-center border-b-2 border-slate-300 px-3 py-2 last:border-b-0">
+                <p className={`text-left text-sm ${aGreen ? "font-black text-emerald-700" : "text-slate-900"}`}>{aText}</p>
+                <p className="text-center text-sm font-semibold text-slate-900">Break Points</p>
+                <p className={`text-right text-sm ${bGreen ? "font-black text-emerald-700" : "text-slate-900"}`}>{bText}</p>
+              </div>
+            );
+          })()}
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2">
