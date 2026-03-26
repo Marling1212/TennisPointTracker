@@ -37,7 +37,7 @@ export default async function MatchPlayPage({ params, searchParams }: MatchPlayP
         <h1 className="text-2xl font-bold text-slate-900">Match #{id}</h1>
       </header>
 
-      <LiveScoringInput setupData={setupData} matchData={matchData} />
+      <LiveScoringInput setupData={setupData} matchData={matchData} matchId={id} />
     </main>
   );
 }

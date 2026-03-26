@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Scoreboard from "@/components/Scoreboard";
 import { calculateNextScore, type ScoreState } from "@/utils/scoringEngine";
+import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 
 type TeamSide = "A" | "B";
 type Phase = "serve-first" | "serve-second" | "point-winner" | "point-outcome" | "stroke" | "awaiting-server-selection" | "match-over";
@@ -343,13 +344,15 @@ const neutralButton = `${baseActionButton} border-2 border-slate-300 bg-slate-10
 type LiveScoringInputProps = {
   setupData?: unknown;
   matchData?: MatchRow;
+  matchId?: string;
 };
 
-export default function LiveScoringInput({ setupData, matchData }: LiveScoringInputProps) {
+export default function LiveScoringInput({ setupData, matchData, matchId }: LiveScoringInputProps) {
   const router = useRouter();
   const config = buildConfig(setupData, matchData);
   const [state, dispatch] = useReducer(createReducer(config), config, buildInitialState);
   const [nameMode, setNameMode] = useState<"real" | "nickname">("real");
+  const hasTriggeredFinishRef = useRef(false);
 
   const getDisplayPlayerName = (player: CourtPlayer): string =>
     nameMode === "nickname" ? player.nickname?.trim() || player.name : player.name;
@@ -368,12 +371,35 @@ export default function LiveScoringInput({ setupData, matchData }: LiveScoringIn
     }
   }, [state.lastCompletedPoint]);
 
+  const finishMatch = useCallback(async () => {
+    if (matchId && supabase && hasSupabaseEnv) {
+      await supabase.from("matches").update({ status: "Completed" }).eq("id", matchId);
+    }
+    router.push(matchId ? `/match/${matchId}/stats` : "/");
+  }, [matchId, router]);
+
+  useEffect(() => {
+    if (!state.present.scoreState.isMatchOver || hasTriggeredFinishRef.current) {
+      return;
+    }
+
+    hasTriggeredFinishRef.current = true;
+    const timer = setTimeout(() => {
+      void finishMatch();
+    }, 2000);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [finishMatch, state.present.scoreState]);
+
   const activeSideForStep: TeamSide | null =
     state.present.phase === "serve-first" || state.present.phase === "serve-second"
       ? state.present.currentServerSide
       : state.present.phase === "point-outcome" || state.present.phase === "stroke"
         ? state.present.draft.pointWinner ?? null
         : null;
+  const isInputDisabled = state.present.scoreState.isMatchOver;
 
   const phaseLabel =
     state.present.phase === "serve-first"
@@ -456,20 +482,25 @@ export default function LiveScoringInput({ setupData, matchData }: LiveScoringIn
           </div>
           <div className="mt-2 flex-1 space-y-2 overflow-auto">
             {state.present.phase === "point-winner" && (
-              <button type="button" className={winnerButton} onClick={() => dispatch({ type: "SET_POINT_WINNER", winner: "A" })}>
+              <button
+                type="button"
+                className={winnerButton}
+                onClick={() => dispatch({ type: "SET_POINT_WINNER", winner: "A" })}
+                disabled={isInputDisabled}
+              >
                 Team A Won Point
               </button>
             )}
 
             {activeSideForStep === "A" && state.present.phase === "serve-first" && (
               <>
-                <button type="button" className={serveButton} onClick={() => dispatch({ type: "FIRST_SERVE_IN" })}>
+                <button type="button" className={serveButton} onClick={() => dispatch({ type: "FIRST_SERVE_IN" })} disabled={isInputDisabled}>
                   1st Serve IN
                 </button>
-                <button type="button" className={serveButton} onClick={() => dispatch({ type: "FAULT" })}>
+                <button type="button" className={serveButton} onClick={() => dispatch({ type: "FAULT" })} disabled={isInputDisabled}>
                   FAULT
                 </button>
-                <button type="button" className={serveButton} onClick={() => dispatch({ type: "ACE" })}>
+                <button type="button" className={serveButton} onClick={() => dispatch({ type: "ACE" })} disabled={isInputDisabled}>
                   ACE
                 </button>
               </>
@@ -477,13 +508,13 @@ export default function LiveScoringInput({ setupData, matchData }: LiveScoringIn
 
             {activeSideForStep === "A" && state.present.phase === "serve-second" && (
               <>
-                <button type="button" className={serveButton} onClick={() => dispatch({ type: "SECOND_SERVE_IN" })}>
+                <button type="button" className={serveButton} onClick={() => dispatch({ type: "SECOND_SERVE_IN" })} disabled={isInputDisabled}>
                   2nd Serve IN
                 </button>
-                <button type="button" className={serveButton} onClick={() => dispatch({ type: "DOUBLE_FAULT" })}>
+                <button type="button" className={serveButton} onClick={() => dispatch({ type: "DOUBLE_FAULT" })} disabled={isInputDisabled}>
                   DOUBLE FAULT
                 </button>
-                <button type="button" className={serveButton} onClick={() => dispatch({ type: "ACE" })}>
+                <button type="button" className={serveButton} onClick={() => dispatch({ type: "ACE" })} disabled={isInputDisabled}>
                   ACE
                 </button>
               </>
@@ -491,13 +522,28 @@ export default function LiveScoringInput({ setupData, matchData }: LiveScoringIn
 
             {activeSideForStep === "A" && state.present.phase === "point-outcome" && (
               <>
-                <button type="button" className={winnerButton} onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Winner" })}>
+                <button
+                  type="button"
+                  className={winnerButton}
+                  onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Winner" })}
+                  disabled={isInputDisabled}
+                >
                   Winner
                 </button>
-                <button type="button" className={unforcedErrorButton} onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Unforced Error" })}>
+                <button
+                  type="button"
+                  className={unforcedErrorButton}
+                  onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Unforced Error" })}
+                  disabled={isInputDisabled}
+                >
                   Unforced Error
                 </button>
-                <button type="button" className={forcedErrorButton} onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Forced Error" })}>
+                <button
+                  type="button"
+                  className={forcedErrorButton}
+                  onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Forced Error" })}
+                  disabled={isInputDisabled}
+                >
                   Forced Error
                 </button>
               </>
@@ -505,16 +551,16 @@ export default function LiveScoringInput({ setupData, matchData }: LiveScoringIn
 
             {activeSideForStep === "A" && state.present.phase === "stroke" && (
               <>
-                <button type="button" className={neutralButton} onClick={() => dispatch({ type: "SET_STROKE", stroke: "Forehand" })}>
+                <button type="button" className={neutralButton} onClick={() => dispatch({ type: "SET_STROKE", stroke: "Forehand" })} disabled={isInputDisabled}>
                   Forehand
                 </button>
-                <button type="button" className={neutralButton} onClick={() => dispatch({ type: "SET_STROKE", stroke: "Backhand" })}>
+                <button type="button" className={neutralButton} onClick={() => dispatch({ type: "SET_STROKE", stroke: "Backhand" })} disabled={isInputDisabled}>
                   Backhand
                 </button>
-                <button type="button" className={neutralButton} onClick={() => dispatch({ type: "SET_STROKE", stroke: "Volley" })}>
+                <button type="button" className={neutralButton} onClick={() => dispatch({ type: "SET_STROKE", stroke: "Volley" })} disabled={isInputDisabled}>
                   Volley
                 </button>
-                <button type="button" className={neutralButton} onClick={() => dispatch({ type: "SET_STROKE", stroke: "Overhead" })}>
+                <button type="button" className={neutralButton} onClick={() => dispatch({ type: "SET_STROKE", stroke: "Overhead" })} disabled={isInputDisabled}>
                   Overhead
                 </button>
               </>
@@ -530,20 +576,25 @@ export default function LiveScoringInput({ setupData, matchData }: LiveScoringIn
           </div>
           <div className="mt-2 flex-1 space-y-2 overflow-auto">
             {state.present.phase === "point-winner" && (
-              <button type="button" className={winnerButton} onClick={() => dispatch({ type: "SET_POINT_WINNER", winner: "B" })}>
+              <button
+                type="button"
+                className={winnerButton}
+                onClick={() => dispatch({ type: "SET_POINT_WINNER", winner: "B" })}
+                disabled={isInputDisabled}
+              >
                 Team B Won Point
               </button>
             )}
 
             {activeSideForStep === "B" && state.present.phase === "serve-first" && (
               <>
-                <button type="button" className={serveButton} onClick={() => dispatch({ type: "FIRST_SERVE_IN" })}>
+                <button type="button" className={serveButton} onClick={() => dispatch({ type: "FIRST_SERVE_IN" })} disabled={isInputDisabled}>
                   1st Serve IN
                 </button>
-                <button type="button" className={serveButton} onClick={() => dispatch({ type: "FAULT" })}>
+                <button type="button" className={serveButton} onClick={() => dispatch({ type: "FAULT" })} disabled={isInputDisabled}>
                   FAULT
                 </button>
-                <button type="button" className={serveButton} onClick={() => dispatch({ type: "ACE" })}>
+                <button type="button" className={serveButton} onClick={() => dispatch({ type: "ACE" })} disabled={isInputDisabled}>
                   ACE
                 </button>
               </>
@@ -551,13 +602,13 @@ export default function LiveScoringInput({ setupData, matchData }: LiveScoringIn
 
             {activeSideForStep === "B" && state.present.phase === "serve-second" && (
               <>
-                <button type="button" className={serveButton} onClick={() => dispatch({ type: "SECOND_SERVE_IN" })}>
+                <button type="button" className={serveButton} onClick={() => dispatch({ type: "SECOND_SERVE_IN" })} disabled={isInputDisabled}>
                   2nd Serve IN
                 </button>
-                <button type="button" className={serveButton} onClick={() => dispatch({ type: "DOUBLE_FAULT" })}>
+                <button type="button" className={serveButton} onClick={() => dispatch({ type: "DOUBLE_FAULT" })} disabled={isInputDisabled}>
                   DOUBLE FAULT
                 </button>
-                <button type="button" className={serveButton} onClick={() => dispatch({ type: "ACE" })}>
+                <button type="button" className={serveButton} onClick={() => dispatch({ type: "ACE" })} disabled={isInputDisabled}>
                   ACE
                 </button>
               </>
@@ -565,13 +616,28 @@ export default function LiveScoringInput({ setupData, matchData }: LiveScoringIn
 
             {activeSideForStep === "B" && state.present.phase === "point-outcome" && (
               <>
-                <button type="button" className={winnerButton} onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Winner" })}>
+                <button
+                  type="button"
+                  className={winnerButton}
+                  onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Winner" })}
+                  disabled={isInputDisabled}
+                >
                   Winner
                 </button>
-                <button type="button" className={unforcedErrorButton} onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Unforced Error" })}>
+                <button
+                  type="button"
+                  className={unforcedErrorButton}
+                  onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Unforced Error" })}
+                  disabled={isInputDisabled}
+                >
                   Unforced Error
                 </button>
-                <button type="button" className={forcedErrorButton} onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Forced Error" })}>
+                <button
+                  type="button"
+                  className={forcedErrorButton}
+                  onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Forced Error" })}
+                  disabled={isInputDisabled}
+                >
                   Forced Error
                 </button>
               </>
@@ -579,16 +645,16 @@ export default function LiveScoringInput({ setupData, matchData }: LiveScoringIn
 
             {activeSideForStep === "B" && state.present.phase === "stroke" && (
               <>
-                <button type="button" className={neutralButton} onClick={() => dispatch({ type: "SET_STROKE", stroke: "Forehand" })}>
+                <button type="button" className={neutralButton} onClick={() => dispatch({ type: "SET_STROKE", stroke: "Forehand" })} disabled={isInputDisabled}>
                   Forehand
                 </button>
-                <button type="button" className={neutralButton} onClick={() => dispatch({ type: "SET_STROKE", stroke: "Backhand" })}>
+                <button type="button" className={neutralButton} onClick={() => dispatch({ type: "SET_STROKE", stroke: "Backhand" })} disabled={isInputDisabled}>
                   Backhand
                 </button>
-                <button type="button" className={neutralButton} onClick={() => dispatch({ type: "SET_STROKE", stroke: "Volley" })}>
+                <button type="button" className={neutralButton} onClick={() => dispatch({ type: "SET_STROKE", stroke: "Volley" })} disabled={isInputDisabled}>
                   Volley
                 </button>
-                <button type="button" className={neutralButton} onClick={() => dispatch({ type: "SET_STROKE", stroke: "Overhead" })}>
+                <button type="button" className={neutralButton} onClick={() => dispatch({ type: "SET_STROKE", stroke: "Overhead" })} disabled={isInputDisabled}>
                   Overhead
                 </button>
               </>
@@ -601,7 +667,7 @@ export default function LiveScoringInput({ setupData, matchData }: LiveScoringIn
         type="button"
         className="absolute bottom-2 left-1/2 z-10 w-36 -translate-x-1/2 rounded-xl border-2 border-red-200 bg-red-600 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
         onClick={() => dispatch({ type: "UNDO" })}
-        disabled={state.history.length === 0}
+        disabled={state.history.length === 0 || isInputDisabled}
       >
         Undo
       </button>
@@ -639,13 +705,7 @@ export default function LiveScoringInput({ setupData, matchData }: LiveScoringIn
             <p className="mt-2 text-sm text-slate-700">
               Final sets: {state.present.scoreState.sets.teamA} - {state.present.scoreState.sets.teamB}
             </p>
-            <button
-              type="button"
-              onClick={() => router.push("/")}
-              className="mt-4 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Back to Dashboard
-            </button>
+            <p className="mt-3 text-xs text-slate-500">Redirecting to match stats...</p>
           </div>
         </div>
       )}
