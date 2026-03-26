@@ -64,6 +64,21 @@ export default function TeamStatsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
+  const handleDeleteMatch = async (matchId: string) => {
+    if (!supabase || !hasSupabaseEnv) return;
+    const shouldDelete = window.confirm("Are you sure you want to delete this match? All points will be lost.");
+    if (!shouldDelete) return;
+
+    const { error } = await supabase.from("matches").delete().eq("id", matchId);
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+
+    setMatches((prev) => prev.filter((match) => match.id !== matchId));
+    setPoints((prev) => prev.filter((point) => point.match_id !== matchId));
+  };
+
   useEffect(() => {
     const loadDashboard = async () => {
       if (!supabase || !hasSupabaseEnv) {
@@ -272,12 +287,21 @@ export default function TeamStatsPage() {
                   <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
                     Format: {match.match_type ?? "Unknown"}
                   </p>
-                  <Link
-                    href={`/match/${match.id}/stats`}
-                    className="mt-3 inline-flex items-center rounded-lg border-2 border-slate-900 bg-slate-900 px-3 py-2 text-xs font-bold text-white"
-                  >
-                    View Match Stats
-                  </Link>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Link
+                      href={`/match/${match.id}/stats`}
+                      className="inline-flex items-center rounded-lg border-2 border-slate-900 bg-slate-900 px-3 py-2 text-xs font-bold text-white"
+                    >
+                      View Match Stats
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteMatch(match.id)}
+                      className="inline-flex items-center rounded-lg border-2 border-red-300 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </article>
               ))
             )}
