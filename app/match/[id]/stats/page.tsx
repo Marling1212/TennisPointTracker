@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
+import { resolveWinnerFromLoggedPoints } from "@/utils/matchWinnerFromPoints";
+import type { MatchRules } from "@/utils/spectatorReplay";
 
 type MatchRow = {
   id: string;
@@ -13,10 +15,15 @@ type MatchRow = {
   status: string | null;
   team_id: string | null;
   score_summary: string | null;
+  winning_team: "teamA" | "teamB" | null;
+  is_manual_entry: boolean | null;
+  scoring_type: "Standard" | "No-Ad" | null;
+  sets_format: "1 Set" | "Best of 3 Sets" | "Tiebreak Only" | null;
 };
 
 type PointRow = {
   id: string;
+  created_at?: string | null;
   point_winner_team: "teamA" | "teamB" | null;
   ending_type: "Winner" | "Unforced Error" | "Forced Error" | "Ace" | "Double Fault" | null;
   server_id: string | null;
@@ -69,6 +76,13 @@ const defaultTeamSplit: TeamSplitStats = {
   aces: { ...defaultSplit },
   doubleFaults: { ...defaultSplit },
 };
+
+function matchRulesFromRow(match: MatchRow | null): MatchRules {
+  return {
+    scoringType: match?.scoring_type === "No-Ad" ? "No-Ad" : "Standard",
+    setsFormat: match?.sets_format ?? "Best of 3 Sets",
+  };
+}
 
 function playerDisplayName(p: PlayerProfile): string {
   return `${p.first_name} ${p.last_name}`.trim();
@@ -377,7 +391,9 @@ export default function MatchStatsPage() {
 
       const { data: matchData, error: matchError } = await supabase
         .from("matches")
-        .select("id, match_type, team_a_name, team_b_name, status, team_id, score_summary")
+        .select(
+          "id, match_type, team_a_name, team_b_name, status, team_id, score_summary, winning_team, is_manual_entry, scoring_type, sets_format",
+        )
         .eq("id", matchId)
         .maybeSingle();
 
@@ -391,7 +407,7 @@ export default function MatchStatsPage() {
       const { data: pointsData, error: pointsError } = await supabase
         .from("points")
         .select(
-          "id, point_winner_team, ending_type, server_id, action_player_id, is_break_point, is_match_point, serving_team",
+          "id, created_at, point_winner_team, ending_type, server_id, action_player_id, is_break_point, is_match_point, serving_team",
         )
         .eq("match_id", matchId);
 
@@ -502,10 +518,20 @@ export default function MatchStatsPage() {
   const winnerLabel = useMemo(() => {
     const teamAName = match?.team_a_name ?? "Team A";
     const teamBName = match?.team_b_name ?? "Team B";
-    if (stats.teamA.totalPointsWon > stats.teamB.totalPointsWon) return teamAName;
-    if (stats.teamB.totalPointsWon > stats.teamA.totalPointsWon) return teamBName;
+    if (match?.winning_team === "teamA") return teamAName;
+    if (match?.winning_team === "teamB") return teamBName;
+
+    const rules = matchRulesFromRow(match);
+    const spectatorPoints = points.map((p) => ({
+      id: p.id,
+      point_winner_team: p.point_winner_team,
+      created_at: p.created_at ?? undefined,
+    }));
+    const outcome = resolveWinnerFromLoggedPoints(spectatorPoints, rules);
+    if (outcome === "teamA") return teamAName;
+    if (outcome === "teamB") return teamBName;
     return "Draw";
-  }, [match, stats.teamA.totalPointsWon, stats.teamB.totalPointsWon]);
+  }, [match, points]);
 
   const teamAHeader =
     isDoubles && lineupA.length >= 2 ? `${lineupA[0].label} / ${lineupA[1].label}` : (match?.team_a_name ?? "Team A");
@@ -513,7 +539,7 @@ export default function MatchStatsPage() {
     isDoubles && lineupB.length >= 2 ? `${lineupB[0].label} / ${lineupB[1].label}` : (match?.team_b_name ?? "Team B");
 
   const statRows: Array<{ key: StatKey; label: string }> = [
-    { key: "totalPointsWon", label: "Total Points Won" },
+    { key: "totalPointsWon", label: "Rally points won" },
     { key: "winners", label: "Winners" },
     { key: "unforcedErrors", label: "Unforced Errors" },
     { key: "forcedErrors", label: "Forced Errors" },
@@ -549,6 +575,7 @@ export default function MatchStatsPage() {
         <div className="mt-3 rounded-lg border-2 border-slate-300 bg-slate-50 px-3 py-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Winner</p>
           <p className="text-lg font-black text-slate-900">{winnerLabel}</p>
+          <p className="mt-1 text-xs text-slate-600">Based on sets and games, not rally point totals.</p>
         </div>
         {errorMessage && (
           <div className="mt-3 rounded-lg border-2 border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMessage}</div>
@@ -635,7 +662,7 @@ export default function MatchStatsPage() {
             <p className="text-xl font-black text-slate-900">{points.length}</p>
           </div>
           <div className="rounded-lg border-2 border-slate-300 bg-white px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Point Margin</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Rally point margin</p>
             <p className="text-xl font-black text-slate-900">
               {Math.abs(stats.teamA.totalPointsWon - stats.teamB.totalPointsWon)}
             </p>
