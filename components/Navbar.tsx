@@ -18,7 +18,7 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur">
+    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur print:hidden">
       <div className="mx-auto grid w-full max-w-md grid-cols-3 gap-2 px-3 py-2">
         {links.map((link) => {
           const isActive = pathname.startsWith(link.href);

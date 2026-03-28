@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
@@ -258,6 +259,14 @@ export default function PlayerCardPage() {
           {player ? `${player.first_name} ${player.last_name}` : "Unknown Player"}
         </h1>
         {player && <p className="mt-1 text-sm text-slate-300">@{player.nickname} • {player.dominant_hand ?? "Unknown"} hand</p>}
+        {player && (
+          <Link
+            href={`/players/${playerId}/report`}
+            className="mt-3 inline-flex rounded-lg border border-emerald-500/60 bg-emerald-950/40 px-3 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-900/50"
+          >
+            Scouting report →
+          </Link>
+        )}
         {errorMessage && (
           <div className="mt-4 rounded-xl border border-red-800 bg-red-950/60 px-3 py-2 text-sm text-red-300">{errorMessage}</div>
         )}
