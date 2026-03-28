@@ -12,6 +12,7 @@ type MatchRow = {
   team_b_name: string | null;
   status: string | null;
   team_id: string | null;
+  score_summary: string | null;
 };
 
 type PointRow = {
@@ -21,6 +22,7 @@ type PointRow = {
   server_id: string | null;
   action_player_id: string | null;
   is_break_point?: boolean | null;
+  is_match_point?: boolean | null;
   serving_team?: "teamA" | "teamB" | null;
 };
 
@@ -254,6 +256,60 @@ function splitSum(s: SplitStat): number {
 
 const splitKeys: Array<keyof TeamSplitStats> = ["winners", "unforcedErrors", "forcedErrors", "aces", "doubleFaults"];
 
+function pressureOpportunityStats(points: PointRow[], flag: "is_break_point" | "is_match_point") {
+  let oppA = 0;
+  let convA = 0;
+  let oppB = 0;
+  let convB = 0;
+  let savedA = 0;
+  let savedB = 0;
+
+  for (const pt of points) {
+    const isFlag = flag === "is_break_point" ? pt.is_break_point : pt.is_match_point;
+    if (!isFlag || !pt.serving_team || !pt.point_winner_team) continue;
+
+    const receiverTeam: "teamA" | "teamB" = pt.serving_team === "teamA" ? "teamB" : "teamA";
+
+    if (receiverTeam === "teamA") {
+      oppA += 1;
+      if (pt.point_winner_team === "teamA") convA += 1;
+    } else {
+      oppB += 1;
+      if (pt.point_winner_team === "teamB") convB += 1;
+    }
+
+    if (pt.serving_team === "teamA" && pt.point_winner_team === "teamA") savedA += 1;
+    if (pt.serving_team === "teamB" && pt.point_winner_team === "teamB") savedB += 1;
+  }
+
+  return {
+    teamA: { converted: convA, opportunities: oppA, saved: savedA },
+    teamB: { converted: convB, opportunities: oppB, saved: savedB },
+  };
+}
+
+function conversionHighlightRates(
+  convA: number,
+  oppA: number,
+  convB: number,
+  oppB: number,
+): { aGreen: boolean; bGreen: boolean } {
+  const rate = (c: number, o: number) => (o === 0 ? null : c / o);
+  const rA = rate(convA, oppA);
+  const rB = rate(convB, oppB);
+  let aGreen = false;
+  let bGreen = false;
+  if (rA !== null && rB !== null) {
+    if (rA > rB) aGreen = true;
+    else if (rB > rA) bGreen = true;
+  } else if (rA !== null && rB === null) {
+    aGreen = true;
+  } else if (rB !== null && rA === null) {
+    bGreen = true;
+  }
+  return { aGreen, bGreen };
+}
+
 function formatStatCell(
   key: StatKey,
   side: "A" | "B",
@@ -295,7 +351,7 @@ export default function MatchStatsPage() {
 
       const { data: matchData, error: matchError } = await supabase
         .from("matches")
-        .select("id, match_type, team_a_name, team_b_name, status, team_id")
+        .select("id, match_type, team_a_name, team_b_name, status, team_id, score_summary")
         .eq("id", matchId)
         .maybeSingle();
 
@@ -308,7 +364,9 @@ export default function MatchStatsPage() {
 
       const { data: pointsData, error: pointsError } = await supabase
         .from("points")
-        .select("id, point_winner_team, ending_type, server_id, action_player_id, is_break_point, serving_team")
+        .select(
+          "id, point_winner_team, ending_type, server_id, action_player_id, is_break_point, is_match_point, serving_team",
+        )
         .eq("match_id", matchId);
 
       if (pointsError) {
@@ -384,36 +442,9 @@ export default function MatchStatsPage() {
     return { teamA, teamB };
   }, [points]);
 
-  const breakPointStats = useMemo(() => {
-    let oppA = 0;
-    let convA = 0;
-    let oppB = 0;
-    let convB = 0;
-    let savedA = 0;
-    let savedB = 0;
+  const breakPointStats = useMemo(() => pressureOpportunityStats(points, "is_break_point"), [points]);
 
-    for (const pt of points) {
-      if (!pt.is_break_point || !pt.serving_team || !pt.point_winner_team) continue;
-
-      const receiverTeam: "teamA" | "teamB" = pt.serving_team === "teamA" ? "teamB" : "teamA";
-
-      if (receiverTeam === "teamA") {
-        oppA += 1;
-        if (pt.point_winner_team === "teamA") convA += 1;
-      } else {
-        oppB += 1;
-        if (pt.point_winner_team === "teamB") convB += 1;
-      }
-
-      if (pt.serving_team === "teamA" && pt.point_winner_team === "teamA") savedA += 1;
-      if (pt.serving_team === "teamB" && pt.point_winner_team === "teamB") savedB += 1;
-    }
-
-    return {
-      teamA: { converted: convA, opportunities: oppA, saved: savedA },
-      teamB: { converted: convB, opportunities: oppB, saved: savedB },
-    };
-  }, [points]);
+  const matchPointStats = useMemo(() => pressureOpportunityStats(points, "is_match_point"), [points]);
 
   const isDoubles = match?.match_type === "Doubles";
 
@@ -486,6 +517,9 @@ export default function MatchStatsPage() {
         </div>
 
         <h1 className="mt-3 text-xl font-black text-slate-900">Post-Match Stats</h1>
+        {match?.score_summary?.trim() ? (
+          <p className="mt-2 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">{match.score_summary.trim()}</p>
+        ) : null}
         <div className="mt-3 rounded-lg border-2 border-slate-300 bg-slate-50 px-3 py-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Winner</p>
           <p className="text-lg font-black text-slate-900">{winnerLabel}</p>
@@ -525,28 +559,45 @@ export default function MatchStatsPage() {
           {(() => {
             const bpA = breakPointStats.teamA;
             const bpB = breakPointStats.teamB;
-            const rate = (c: number, o: number) => (o === 0 ? null : c / o);
-            const rA = rate(bpA.converted, bpA.opportunities);
-            const rB = rate(bpB.converted, bpB.opportunities);
-            let aGreen = false;
-            let bGreen = false;
-            if (rA !== null && rB !== null) {
-              if (rA > rB) aGreen = true;
-              else if (rB > rA) bGreen = true;
-            } else if (rA !== null && rB === null) {
-              aGreen = true;
-            } else if (rB !== null && rA === null) {
-              bGreen = true;
-            }
+            const { aGreen, bGreen } = conversionHighlightRates(
+              bpA.converted,
+              bpA.opportunities,
+              bpB.converted,
+              bpB.opportunities,
+            );
 
-            const aText = `${bpA.converted} / ${bpA.opportunities}`;
-            const bText = `${bpB.converted} / ${bpB.opportunities}`;
+            return (
+              <div className="grid grid-cols-3 items-center border-b-2 border-slate-300 px-3 py-2">
+                <p className={`text-left text-sm ${aGreen ? "font-black text-emerald-700" : "text-slate-900"}`}>
+                  {bpA.converted} / {bpA.opportunities}
+                </p>
+                <p className="text-center text-sm font-semibold text-slate-900">Break Points</p>
+                <p className={`text-right text-sm ${bGreen ? "font-black text-emerald-700" : "text-slate-900"}`}>
+                  {bpB.converted} / {bpB.opportunities}
+                </p>
+              </div>
+            );
+          })()}
+
+          {(() => {
+            const mpA = matchPointStats.teamA;
+            const mpB = matchPointStats.teamB;
+            const { aGreen, bGreen } = conversionHighlightRates(
+              mpA.converted,
+              mpA.opportunities,
+              mpB.converted,
+              mpB.opportunities,
+            );
 
             return (
               <div className="grid grid-cols-3 items-center border-b-2 border-slate-300 px-3 py-2 last:border-b-0">
-                <p className={`text-left text-sm ${aGreen ? "font-black text-emerald-700" : "text-slate-900"}`}>{aText}</p>
-                <p className="text-center text-sm font-semibold text-slate-900">Break Points</p>
-                <p className={`text-right text-sm ${bGreen ? "font-black text-emerald-700" : "text-slate-900"}`}>{bText}</p>
+                <p className={`text-left text-sm ${aGreen ? "font-black text-emerald-700" : "text-slate-900"}`}>
+                  {mpA.converted} / {mpA.opportunities}
+                </p>
+                <p className="text-center text-sm font-semibold text-slate-900">Match Points</p>
+                <p className={`text-right text-sm ${bGreen ? "font-black text-emerald-700" : "text-slate-900"}`}>
+                  {mpB.converted} / {mpB.opportunities}
+                </p>
               </div>
             );
           })()}

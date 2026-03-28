@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Scoreboard from "@/components/Scoreboard";
-import { calculateNextScore, isBreakPointBeforePoint, type ScoreState } from "@/utils/scoringEngine";
+import {
+  calculateNextScore,
+  getCompletedSetScoreLine,
+  isBreakPointBeforePoint,
+  isMatchPointBeforePoint,
+  type ScoreState,
+} from "@/utils/scoringEngine";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 
 type TeamSide = "A" | "B";
@@ -83,6 +89,8 @@ type PresentState = {
   currentServerSide: TeamSide;
   awaitingServerSide?: TeamSide;
   scoreState: ScoreState;
+  /** Finished set scores in order, e.g. ["6-4", "2-6"] — used for match score_summary. */
+  completedSetScores: string[];
 };
 
 type ReducerState = {
@@ -163,6 +171,7 @@ const buildInitialState = (config: MatchConfig): ReducerState => ({
       isTiebreak: config.setsFormat === "Tiebreak Only",
       isMatchOver: false,
     },
+    completedSetScores: [],
   },
   history: [],
   lastCompletedPoint: null,
@@ -235,10 +244,16 @@ const finalizePoint = (state: ReducerState, payload: FinalPointPayload): Reducer
 
   const isMatchOver = nextScore.isMatchOver;
 
+  const setLine = getCompletedSetScoreLine(previousScore, nextScore, winnerTeamKey, state.config.setsFormat);
+  const completedSetScores = setLine
+    ? [...state.present.completedSetScores, setLine]
+    : state.present.completedSetScores;
+
   return withHistory(
     state,
     {
       ...state.present,
+      completedSetScores,
       phase: isMatchOver ? "match-over" : needsIntercept ? "awaiting-server-selection" : "serve-first",
       draft: { serveSequence: [] },
       scoreState: nextScore,
@@ -463,11 +478,18 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
   }, [state.lastCompletedPoint]);
 
   const finishMatch = useCallback(async () => {
+    const summaries = state.present.completedSetScores;
+    const sets = state.present.scoreState.sets;
+    const finalScoreString =
+      summaries.length > 0 ? summaries.join(", ") : `${sets.teamA}-${sets.teamB}`;
     if (matchId && supabase && hasSupabaseEnv) {
-      await supabase.from("matches").update({ status: "Completed" }).eq("id", matchId);
+      await supabase
+        .from("matches")
+        .update({ status: "Completed", score_summary: finalScoreString })
+        .eq("id", matchId);
     }
     router.push(matchId ? `/match/${matchId}/stats` : "/");
-  }, [matchId, router]);
+  }, [matchId, router, state.present.completedSetScores, state.present.scoreState.sets]);
 
   useEffect(() => {
     if (!state.present.scoreState.isMatchOver || hasTriggeredFinishRef.current) {
@@ -493,6 +515,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
       strokeType: string | null,
       actionPlayerId: string | null,
       isBreakPoint: boolean,
+      isMatchPoint: boolean,
     ) => {
       if (!matchId || !supabase || !hasSupabaseEnv) return;
       const isGuestServer =
@@ -508,6 +531,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
         ending_type: endingType,
         stroke_type: strokeType,
         is_break_point: isBreakPoint,
+        is_match_point: isMatchPoint,
         serving_team,
       });
       if (error) {
@@ -524,8 +548,9 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
     const winner: "teamA" | "teamB" = state.present.currentServerSide === "A" ? "teamA" : "teamB";
     const isNoAd = config.scoringType === "No-Ad";
     const isBp = isBreakPointBeforePoint(state.present.scoreState, state.present.currentServerSide, isNoAd);
+    const isMp = isMatchPointBeforePoint(state.present.scoreState, isNoAd, config.setsFormat);
     try {
-      await logPointToDatabase(winner, "Ace", null, state.present.currentServerId, isBp);
+      await logPointToDatabase(winner, "Ace", null, state.present.currentServerId, isBp, isMp);
     } catch (error) {
       setPointSaveError(error instanceof Error ? error.message : "Failed to save point.");
     } finally {
@@ -534,6 +559,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
     }
   }, [
     config.scoringType,
+    config.setsFormat,
     isInputDisabled,
     isSavingPoint,
     logPointToDatabase,
@@ -549,8 +575,9 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
     const winner: "teamA" | "teamB" = state.present.currentServerSide === "A" ? "teamB" : "teamA";
     const isNoAd = config.scoringType === "No-Ad";
     const isBp = isBreakPointBeforePoint(state.present.scoreState, state.present.currentServerSide, isNoAd);
+    const isMp = isMatchPointBeforePoint(state.present.scoreState, isNoAd, config.setsFormat);
     try {
-      await logPointToDatabase(winner, "Double Fault", null, state.present.currentServerId, isBp);
+      await logPointToDatabase(winner, "Double Fault", null, state.present.currentServerId, isBp, isMp);
     } catch (error) {
       setPointSaveError(error instanceof Error ? error.message : "Failed to save point.");
     } finally {
@@ -559,6 +586,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
     }
   }, [
     config.scoringType,
+    config.setsFormat,
     isInputDisabled,
     isSavingPoint,
     logPointToDatabase,
@@ -579,8 +607,9 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
       const winner: "teamA" | "teamB" = draftWinner === "A" ? "teamA" : "teamB";
       const isNoAd = config.scoringType === "No-Ad";
       const isBp = isBreakPointBeforePoint(state.present.scoreState, state.present.currentServerSide, isNoAd);
+      const isMp = isMatchPointBeforePoint(state.present.scoreState, isNoAd, config.setsFormat);
       try {
-        await logPointToDatabase(winner, draftOutcome, stroke, state.present.draft.actionPlayerId ?? null, isBp);
+        await logPointToDatabase(winner, draftOutcome, stroke, state.present.draft.actionPlayerId ?? null, isBp, isMp);
       } catch (error) {
         setPointSaveError(error instanceof Error ? error.message : "Failed to save point.");
       } finally {
@@ -590,6 +619,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
     },
     [
       config.scoringType,
+      config.setsFormat,
       isInputDisabled,
       isSavingPoint,
       logPointToDatabase,

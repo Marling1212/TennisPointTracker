@@ -23,6 +23,7 @@ type MatchRow = {
   team_a_name: string | null;
   team_b_name: string | null;
   status: "Completed" | "In Progress" | null;
+  score_summary: string | null;
   created_at: string;
 };
 
@@ -150,7 +151,7 @@ export default function TeamStatsPage() {
 
       const { data: matchesData, error: matchesError } = await supabase
         .from("matches")
-        .select("id, match_type, team_a_name, team_b_name, status, created_at")
+        .select("id, match_type, team_a_name, team_b_name, status, score_summary, created_at")
         .eq("team_id", teamData.id)
         .order("created_at", { ascending: false });
 
@@ -375,6 +376,9 @@ export default function TeamStatsPage() {
                       <p className="text-sm font-bold text-slate-900">
                         {(match.team_a_name ?? "Team A") + " vs " + (match.team_b_name ?? "Team B")}
                       </p>
+                      {match.score_summary?.trim() ? (
+                        <p className="mt-1 text-base font-black text-slate-900">{match.score_summary.trim()}</p>
+                      ) : null}
                       <p className="mt-1 text-xs text-slate-700">{formatDate(match.created_at)}</p>
                     </div>
                     <p className="rounded-md border-2 border-slate-300 px-2 py-1 text-xs font-bold text-slate-900">

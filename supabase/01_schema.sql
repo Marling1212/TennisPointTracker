@@ -40,6 +40,7 @@ create table if not exists public.matches (
   team_b_name text,
   scoring_type text check (scoring_type in ('Standard', 'No-Ad')),
   sets_format text check (sets_format in ('1 Set', 'Best of 3 Sets', 'Tiebreak Only')),
+  score_summary text,
   created_at timestamp with time zone default now()
 );
 
@@ -53,6 +54,7 @@ create table if not exists public.points (
   ending_type text check (ending_type in ('Winner', 'Unforced Error', 'Forced Error', 'Ace', 'Double Fault')),
   stroke_type text,
   is_break_point boolean not null default false,
+  is_match_point boolean not null default false,
   serving_team text check (serving_team in ('teamA', 'teamB')),
   created_at timestamp with time zone default now()
 );

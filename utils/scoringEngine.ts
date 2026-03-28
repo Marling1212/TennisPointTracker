@@ -108,6 +108,46 @@ const withTiebreakPoint = (state: ScoreState, pointWinner: TeamKey, setsFormat: 
  *
  * Server side is court side "A" | "B" (same as LiveScoringInput currentServerSide).
  */
+const pointValueToNumber = (value: number | string): number => {
+  if (typeof value === "number") return value;
+  if (value === "Ad") return 50;
+  return 0;
+};
+
+/**
+ * When a set completes, returns a display line like "6-4" or "7-6" (tiebreak) or "10-8" (tiebreak-only match).
+ */
+export function getCompletedSetScoreLine(
+  prev: ScoreState,
+  next: ScoreState,
+  pointWinner: TeamKey,
+  setsFormat: string,
+): string | null {
+  if (next.sets.teamA === prev.sets.teamA && next.sets.teamB === prev.sets.teamB) return null;
+
+  if (setsFormat === "Tiebreak Only") {
+    const a = pointValueToNumber(prev.points.teamA) + (pointWinner === "teamA" ? 1 : 0);
+    const b = pointValueToNumber(prev.points.teamB) + (pointWinner === "teamB" ? 1 : 0);
+    return `${a}-${b}`;
+  }
+
+  if (prev.isTiebreak) {
+    return pointWinner === "teamA" ? "7-6" : "6-7";
+  }
+
+  const finalA = pointWinner === "teamA" ? prev.games.teamA + 1 : prev.games.teamA;
+  const finalB = pointWinner === "teamB" ? prev.games.teamB + 1 : prev.games.teamB;
+  return `${finalA}-${finalB}`;
+}
+
+/** True if either team winning the next point would end the match. */
+export function isMatchPointBeforePoint(state: ScoreState, isNoAd: boolean, setsFormat: string): boolean {
+  if (state.isMatchOver) return false;
+  if (calculateNextScore(state, "teamA", isNoAd, setsFormat).isMatchOver) return true;
+  if (calculateNextScore(state, "teamB", isNoAd, setsFormat).isMatchOver) return true;
+  return false;
+}
+
 export function isBreakPointBeforePoint(
   state: ScoreState,
   serverSide: "A" | "B",
