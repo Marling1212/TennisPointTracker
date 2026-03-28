@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { countGamesWonByTeam } from "@/utils/matchGameCounts";
+import type { MatchRules } from "@/utils/spectatorReplay";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 
 type ProfileRow = {
@@ -25,6 +27,8 @@ type MatchRow = {
   status: "Completed" | "In Progress" | null;
   score_summary: string | null;
   created_at: string;
+  scoring_type: "Standard" | "No-Ad" | null;
+  sets_format: "1 Set" | "Best of 3 Sets" | "Tiebreak Only" | null;
 };
 
 type PointRow = {
@@ -35,14 +39,30 @@ type PointRow = {
   ending_type: "Winner" | "Unforced Error" | "Forced Error" | "Ace" | "Double Fault" | null;
 };
 
-type SortKey = "aces" | "winners" | "unforcedErrors" | "doubleFaults" | "totalPointsPlayed" | "pointWinRate" | "winRate";
+type SortKey =
+  | "aces"
+  | "winners"
+  | "unforcedErrors"
+  | "doubleFaults"
+  | "totalPointsPlayed"
+  | "pointWinRate"
+  | "winRate"
+  | "matchesPlayed"
+  | "liveMatchesPlayed"
+  | "matchesWon"
+  | "gamesWon"
+  | "avgWinnersPerGame"
+  | "avgUnforcedErrorsPerGame";
 
 type PlayerStats = {
   playerId: string;
   fullName: string;
   nickname: string;
   matchesPlayed: number;
+  liveMatchesPlayed: number;
   matchesWon: number;
+  gamesWon: number;
+  totalGamesPlayed: number;
   winRate: number;
   pointsWon: number;
   pointWinRate: number;
@@ -52,6 +72,8 @@ type PlayerStats = {
   unforcedErrors: number;
   forcedErrors: number;
   totalPointsPlayed: number;
+  avgWinnersPerGame: number;
+  avgUnforcedErrorsPerGame: number;
 };
 
 const formatDate = (value: string): string =>
@@ -201,7 +223,7 @@ export default function TeamStatsPage() {
 
       const { data: matchesData, error: matchesError } = await supabase
         .from("matches")
-        .select("id, match_type, team_a_name, team_b_name, status, score_summary, created_at")
+        .select("id, match_type, team_a_name, team_b_name, status, score_summary, created_at, scoring_type, sets_format")
         .eq("team_id", teamData.id)
         .order("created_at", { ascending: false });
 
@@ -294,12 +316,38 @@ export default function TeamStatsPage() {
           return point.point_winner_team && point.point_winner_team !== mySide;
         }).length;
 
+        const liveMatchesPlayed = playerMatches.filter((m) => m.status === "In Progress").length;
+
+        let gamesWon = 0;
+        let totalGamesPlayed = 0;
+        for (const match of playerMatches) {
+          const isTeamAPlayer = (match.team_a_name ?? "").includes(fullName);
+          const mySide: "teamA" | "teamB" = isTeamAPlayer ? "teamA" : "teamB";
+          const ptsInMatch = playerPoints.filter((point) => point.match_id === match.id);
+          const rules: MatchRules = {
+            scoringType: match.scoring_type ?? "Standard",
+            setsFormat: match.sets_format ?? "Best of 3 Sets",
+          };
+          const counts = countGamesWonByTeam(
+            ptsInMatch.map((p) => ({ point_winner_team: p.point_winner_team })),
+            rules,
+          );
+          gamesWon += mySide === "teamA" ? counts.teamA : counts.teamB;
+          totalGamesPlayed += counts.totalGames;
+        }
+
+        const avgWinnersPerGame = totalGamesPlayed > 0 ? winners / totalGamesPlayed : 0;
+        const avgUnforcedErrorsPerGame = totalGamesPlayed > 0 ? unforcedErrors / totalGamesPlayed : 0;
+
         return {
           playerId: player.id,
           fullName,
           nickname: player.nickname,
           matchesPlayed,
+          liveMatchesPlayed,
           matchesWon,
+          gamesWon,
+          totalGamesPlayed,
           winRate,
           pointsWon,
           pointWinRate,
@@ -309,9 +357,11 @@ export default function TeamStatsPage() {
           unforcedErrors,
           forcedErrors,
           totalPointsPlayed,
+          avgWinnersPerGame,
+          avgUnforcedErrorsPerGame,
         };
       })
-      .sort((a, b) => b[sortKey] - a[sortKey]);
+      .sort((a, b) => (b[sortKey] as number) - (a[sortKey] as number));
   }, [matches, players, points, sortKey]);
 
   if (isLoading) {
@@ -348,7 +398,7 @@ export default function TeamStatsPage() {
             <select
               value={sortKey}
               onChange={(event) => setSortKey(event.target.value as SortKey)}
-              className="rounded-lg border-2 border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-900"
+              className="max-w-[min(100vw-2rem,28rem)] rounded-lg border-2 border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-900"
             >
               <option value="aces">Sort: Most Aces</option>
               <option value="winners">Sort: Most Winners</option>
@@ -357,6 +407,12 @@ export default function TeamStatsPage() {
               <option value="totalPointsPlayed">Sort: Most Points Played</option>
               <option value="pointWinRate">Sort: Highest Point Win %</option>
               <option value="winRate">Sort: Highest Match Win %</option>
+              <option value="matchesPlayed">Sort: Most Matches Played</option>
+              <option value="liveMatchesPlayed">Sort: Most Live (In Progress) Matches</option>
+              <option value="matchesWon">Sort: Most Matches Won</option>
+              <option value="gamesWon">Sort: Most Games Won</option>
+              <option value="avgWinnersPerGame">Sort: Highest Avg Winners / Game</option>
+              <option value="avgUnforcedErrorsPerGame">Sort: Highest Avg UE / Game</option>
             </select>
           </div>
 
@@ -366,22 +422,26 @@ export default function TeamStatsPage() {
                 <tr className="border-b-2 border-slate-300 text-left text-xs uppercase tracking-wide text-slate-800">
                   <th className="px-3 py-2">Player</th>
                   <th className="px-3 py-2 text-right">Matches</th>
+                  <th className="px-3 py-2 text-right">Live</th>
                   <th className="px-3 py-2 text-right">W-L</th>
                   <th className="px-3 py-2 text-right">Match Win %</th>
-                  <th className="px-3 py-2 text-right">Points Won</th>
-                  <th className="px-3 py-2 text-right">Point Win %</th>
+                  <th className="px-3 py-2 text-right">Games Won</th>
+                  <th className="px-3 py-2 text-right">Pts Won</th>
+                  <th className="px-3 py-2 text-right">Pt Win %</th>
+                  <th className="px-3 py-2 text-right">Avg W / Gm</th>
+                  <th className="px-3 py-2 text-right">Avg UE / Gm</th>
                   <th className="px-3 py-2 text-right">Aces</th>
-                  <th className="px-3 py-2 text-right">Double Faults</th>
+                  <th className="px-3 py-2 text-right">DF</th>
                   <th className="px-3 py-2 text-right">Winners</th>
-                  <th className="px-3 py-2 text-right">Unforced Errors</th>
-                  <th className="px-3 py-2 text-right">Forced Errors</th>
-                  <th className="px-3 py-2 text-right">Total Points Played</th>
+                  <th className="px-3 py-2 text-right">UE</th>
+                  <th className="px-3 py-2 text-right">FE</th>
+                  <th className="px-3 py-2 text-right">Pts Played</th>
                 </tr>
               </thead>
               <tbody>
                 {playerStats.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-3 py-3 text-sm text-slate-700">
+                    <td colSpan={16} className="px-3 py-3 text-sm text-slate-700">
                       No players found. Add players in Team Roster.
                     </td>
                   </tr>
@@ -393,12 +453,16 @@ export default function TeamStatsPage() {
                         <p className="text-xs text-slate-600">@{row.nickname}</p>
                       </td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.matchesPlayed}</td>
+                      <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.liveMatchesPlayed}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">
                         {row.matchesWon}-{Math.max(row.matchesPlayed - row.matchesWon, 0)}
                       </td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.winRate.toFixed(1)}%</td>
+                      <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.gamesWon}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.pointsWon}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.pointWinRate.toFixed(1)}%</td>
+                      <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.avgWinnersPerGame.toFixed(2)}</td>
+                      <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.avgUnforcedErrorsPerGame.toFixed(2)}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.aces}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.doubleFaults}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.winners}</td>
