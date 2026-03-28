@@ -253,6 +253,7 @@ export default function NewMatchPage() {
         team_b_name: payload.teamBName,
         scoring_type: scoringType,
         sets_format: setsFormat,
+        spectator_public: true,
       })
       .select("id")
       .single();

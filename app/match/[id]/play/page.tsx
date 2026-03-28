@@ -20,11 +20,17 @@ export default async function MatchPlayPage({ params, searchParams }: MatchPlayP
     }
   }
 
-  let matchData: { scoring_type?: "Standard" | "No-Ad" | null; sets_format?: "1 Set" | "Best of 3 Sets" | "Tiebreak Only" | null } | undefined;
+  let matchData:
+    | {
+        scoring_type?: "Standard" | "No-Ad" | null;
+        sets_format?: "1 Set" | "Best of 3 Sets" | "Tiebreak Only" | null;
+        spectator_public?: boolean | null;
+      }
+    | undefined;
   if (supabase) {
     const { data } = await supabase
       .from("matches")
-      .select("scoring_type, sets_format")
+      .select("scoring_type, sets_format, spectator_public")
       .eq("id", id)
       .maybeSingle();
     matchData = data ?? undefined;

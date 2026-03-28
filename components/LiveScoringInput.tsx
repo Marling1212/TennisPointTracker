@@ -50,6 +50,7 @@ type SetupData = {
 type MatchRow = {
   scoring_type?: "Standard" | "No-Ad" | null;
   sets_format?: "1 Set" | "Best of 3 Sets" | "Tiebreak Only" | null;
+  spectator_public?: boolean | null;
 };
 
 type MatchConfig = {
@@ -457,6 +458,10 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
   const [nameMode, setNameMode] = useState<"real" | "nickname">("real");
   const [isSavingPoint, setIsSavingPoint] = useState(false);
   const [pointSaveError, setPointSaveError] = useState("");
+  const [shareCopied, setShareCopied] = useState(false);
+  const [spectatorPublic, setSpectatorPublic] = useState(() => matchData?.spectator_public !== false);
+  const [spectatorSaving, setSpectatorSaving] = useState(false);
+  const [autoLinkToast, setAutoLinkToast] = useState(false);
   const hasTriggeredFinishRef = useRef(false);
 
   const getDisplayPlayerName = (player: CourtPlayer): string =>
@@ -476,6 +481,31 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
       console.log("Live point payload:", state.lastCompletedPoint);
     }
   }, [state.lastCompletedPoint]);
+
+  useEffect(() => {
+    setSpectatorPublic(matchData?.spectator_public !== false);
+  }, [matchData?.spectator_public]);
+
+  useEffect(() => {
+    if (!matchId || typeof window === "undefined") return;
+    if (!spectatorPublic) return;
+    const key = `spectator-live-url-copied-${matchId}`;
+    if (sessionStorage.getItem(key)) return;
+    const url = `${window.location.origin}/match/${matchId}/live`;
+    let cancelled = false;
+    void navigator.clipboard.writeText(url).then(
+      () => {
+        if (cancelled) return;
+        sessionStorage.setItem(key, "1");
+        setAutoLinkToast(true);
+        window.setTimeout(() => setAutoLinkToast(false), 5000);
+      },
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [matchId, spectatorPublic]);
 
   const finishMatch = useCallback(async () => {
     const summaries = state.present.completedSetScores;
@@ -666,6 +696,31 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
         ? "B"
         : null;
 
+  const handleShareLiveScore = async () => {
+    if (!matchId || typeof window === "undefined") return;
+    const url = `${window.location.origin}/match/${matchId}/live`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareCopied(true);
+      window.setTimeout(() => setShareCopied(false), 2000);
+    } catch {
+      setShareCopied(false);
+    }
+  };
+
+  const handleSpectatorPublicChange = async (next: boolean) => {
+    if (!matchId || !supabase || !hasSupabaseEnv) return;
+    const prev = spectatorPublic;
+    setSpectatorPublic(next);
+    setSpectatorSaving(true);
+    const { error } = await supabase.from("matches").update({ spectator_public: next }).eq("id", matchId);
+    setSpectatorSaving(false);
+    if (error) {
+      setSpectatorPublic(prev);
+      setPointSaveError(error.message);
+    }
+  };
+
   return (
     <div className="relative flex h-full w-full min-h-0 flex-col bg-slate-950">
       <div className="flex items-center justify-between border-b border-slate-700 bg-slate-900/95 px-3 py-2">
@@ -698,14 +753,43 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
             </button>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => router.push("/")}
-          className="rounded-md border border-slate-500 bg-slate-800 px-2 py-1 text-xs font-semibold text-white"
-        >
-          Exit
-        </button>
+        <div className="flex flex-col items-end gap-1">
+          {matchId && (
+            <button
+              type="button"
+              onClick={() => void handleShareLiveScore()}
+              className="rounded-md border border-emerald-600/80 bg-emerald-950/80 px-2 py-1 text-[10px] font-semibold text-emerald-100 hover:bg-emerald-900/80"
+            >
+              {shareCopied ? "Copied!" : "Share live score"}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => router.push("/")}
+            className="rounded-md border border-slate-500 bg-slate-800 px-2 py-1 text-xs font-semibold text-white"
+          >
+            Exit
+          </button>
+        </div>
       </div>
+
+      {matchId && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900/80 px-3 py-1.5">
+          <label className="flex cursor-pointer items-center gap-2 text-[10px] text-slate-300">
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 rounded border-slate-500 bg-slate-800"
+              checked={spectatorPublic}
+              disabled={spectatorSaving || !supabase || !hasSupabaseEnv}
+              onChange={(e) => void handleSpectatorPublicChange(e.target.checked)}
+            />
+            <span>Public live page (spectators can open /match/…/live)</span>
+          </label>
+          {autoLinkToast && spectatorPublic && (
+            <span className="text-[10px] font-semibold text-emerald-400">Live link copied — paste to share</span>
+          )}
+        </div>
+      )}
 
       <div className="px-2 pt-2">
         {pointSaveError && (
