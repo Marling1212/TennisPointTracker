@@ -55,6 +55,8 @@ create table if not exists public.points (
   stroke_type text,
   is_break_point boolean not null default false,
   is_match_point boolean not null default false,
+  match_point_team_a boolean not null default false,
+  match_point_team_b boolean not null default false,
   serving_team text check (serving_team in ('teamA', 'teamB')),
   created_at timestamp with time zone default now()
 );

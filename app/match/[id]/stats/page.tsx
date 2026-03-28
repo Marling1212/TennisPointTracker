@@ -23,6 +23,8 @@ type PointRow = {
   action_player_id: string | null;
   is_break_point?: boolean | null;
   is_match_point?: boolean | null;
+  match_point_team_a?: boolean | null;
+  match_point_team_b?: boolean | null;
   serving_team?: "teamA" | "teamB" | null;
 };
 
@@ -256,7 +258,7 @@ function splitSum(s: SplitStat): number {
 
 const splitKeys: Array<keyof TeamSplitStats> = ["winners", "unforcedErrors", "forcedErrors", "aces", "doubleFaults"];
 
-function pressureOpportunityStats(points: PointRow[], flag: "is_break_point" | "is_match_point") {
+function pressureOpportunityStats(points: PointRow[]) {
   let oppA = 0;
   let convA = 0;
   let oppB = 0;
@@ -265,8 +267,7 @@ function pressureOpportunityStats(points: PointRow[], flag: "is_break_point" | "
   let savedB = 0;
 
   for (const pt of points) {
-    const isFlag = flag === "is_break_point" ? pt.is_break_point : pt.is_match_point;
-    if (!isFlag || !pt.serving_team || !pt.point_winner_team) continue;
+    if (!pt.is_break_point || !pt.serving_team || !pt.point_winner_team) continue;
 
     const receiverTeam: "teamA" | "teamB" = pt.serving_team === "teamA" ? "teamB" : "teamA";
 
@@ -308,6 +309,31 @@ function conversionHighlightRates(
     bGreen = true;
   }
   return { aGreen, bGreen };
+}
+
+/** Match point = that team wins the match if they win this point (server or receiver). Requires match_point_team_* from logging. */
+function matchPointTeamStats(points: PointRow[]) {
+  let oppA = 0;
+  let convA = 0;
+  let oppB = 0;
+  let convB = 0;
+
+  for (const pt of points) {
+    if (!pt.point_winner_team) continue;
+    if (pt.match_point_team_a === true) {
+      oppA += 1;
+      if (pt.point_winner_team === "teamA") convA += 1;
+    }
+    if (pt.match_point_team_b === true) {
+      oppB += 1;
+      if (pt.point_winner_team === "teamB") convB += 1;
+    }
+  }
+
+  return {
+    teamA: { converted: convA, opportunities: oppA, saved: 0 },
+    teamB: { converted: convB, opportunities: oppB, saved: 0 },
+  };
 }
 
 function formatStatCell(
@@ -442,9 +468,9 @@ export default function MatchStatsPage() {
     return { teamA, teamB };
   }, [points]);
 
-  const breakPointStats = useMemo(() => pressureOpportunityStats(points, "is_break_point"), [points]);
+  const breakPointStats = useMemo(() => pressureOpportunityStats(points), [points]);
 
-  const matchPointStats = useMemo(() => pressureOpportunityStats(points, "is_match_point"), [points]);
+  const matchPointStats = useMemo(() => matchPointTeamStats(points), [points]);
 
   const isDoubles = match?.match_type === "Doubles";
 

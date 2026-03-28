@@ -140,12 +140,29 @@ export function getCompletedSetScoreLine(
   return `${finalA}-${finalB}`;
 }
 
-/** True if either team winning the next point would end the match. */
+/**
+ * Which team(s) have match point before this point is played.
+ * Team A has MP iff A winning the next point ends the match; same for B.
+ * (Unlike break points, the server can have match point — e.g. serving for the match.)
+ */
+export function matchPointTeamsBeforePoint(
+  state: ScoreState,
+  isNoAd: boolean,
+  setsFormat: string,
+): { teamA: boolean; teamB: boolean } {
+  if (state.isMatchOver) return { teamA: false, teamB: false };
+  const ifA = calculateNextScore(state, "teamA", isNoAd, setsFormat);
+  const ifB = calculateNextScore(state, "teamB", isNoAd, setsFormat);
+  return {
+    teamA: ifA.isMatchOver,
+    teamB: ifB.isMatchOver,
+  };
+}
+
+/** True if either team has match point on this point. */
 export function isMatchPointBeforePoint(state: ScoreState, isNoAd: boolean, setsFormat: string): boolean {
-  if (state.isMatchOver) return false;
-  if (calculateNextScore(state, "teamA", isNoAd, setsFormat).isMatchOver) return true;
-  if (calculateNextScore(state, "teamB", isNoAd, setsFormat).isMatchOver) return true;
-  return false;
+  const mp = matchPointTeamsBeforePoint(state, isNoAd, setsFormat);
+  return mp.teamA || mp.teamB;
 }
 
 export function isBreakPointBeforePoint(
