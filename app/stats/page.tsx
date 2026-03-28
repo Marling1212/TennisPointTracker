@@ -40,17 +40,12 @@ type PointRow = {
 };
 
 type SortKey =
-  | "aces"
-  | "winners"
-  | "unforcedErrors"
-  | "doubleFaults"
   | "totalPointsPlayed"
   | "pointWinRate"
   | "winRate"
   | "matchesPlayed"
   | "liveMatchesPlayed"
   | "matchesWon"
-  | "gamesWon"
   | "avgWinnersPerGame"
   | "avgUnforcedErrorsPerGame";
 
@@ -91,7 +86,7 @@ export default function TeamStatsPage() {
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [matches, setMatches] = useState<MatchRow[]>([]);
   const [points, setPoints] = useState<PointRow[]>([]);
-  const [sortKey, setSortKey] = useState<SortKey>("aces");
+  const [sortKey, setSortKey] = useState<SortKey>("winRate");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -400,17 +395,12 @@ export default function TeamStatsPage() {
               onChange={(event) => setSortKey(event.target.value as SortKey)}
               className="max-w-[min(100vw-2rem,28rem)] rounded-lg border-2 border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-900"
             >
-              <option value="aces">Sort: Most Aces</option>
-              <option value="winners">Sort: Most Winners</option>
-              <option value="unforcedErrors">Sort: Most Unforced Errors</option>
-              <option value="doubleFaults">Sort: Most Double Faults</option>
               <option value="totalPointsPlayed">Sort: Most Points Played</option>
               <option value="pointWinRate">Sort: Highest Point Win %</option>
               <option value="winRate">Sort: Highest Match Win %</option>
               <option value="matchesPlayed">Sort: Most Matches Played</option>
               <option value="liveMatchesPlayed">Sort: Most Live (In Progress) Matches</option>
               <option value="matchesWon">Sort: Most Matches Won</option>
-              <option value="gamesWon">Sort: Most Games Won</option>
               <option value="avgWinnersPerGame">Sort: Highest Avg Winners / Game</option>
               <option value="avgUnforcedErrorsPerGame">Sort: Highest Avg UE / Game</option>
             </select>
