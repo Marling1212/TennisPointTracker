@@ -452,9 +452,16 @@ const unforcedErrorButton = `${baseActionButton} border-2 border-red-200 bg-red-
 const forcedErrorButton = `${baseActionButton} border-2 border-orange-200 bg-orange-500 text-white`;
 const neutralButton = `${baseActionButton} border-2 border-slate-300 bg-slate-100 text-slate-900`;
 
+/** `points.server_id` / `action_player_id` are UUID FKs — not guest/placeholder ids. */
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isDatabasePlayerUuid(id: string): boolean {
+  return UUID_REGEX.test(id);
+}
+
 const playerIdForPointsTable = (id: string | null | undefined): string | null => {
-  if (!id) return null;
-  if (id.startsWith("team-a-guest-") || id.startsWith("team-b-guest-")) return null;
+  if (!id || !isDatabasePlayerUuid(id)) return null;
   return id;
 };
 
@@ -646,15 +653,15 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
       matchPointTeams: { teamA: boolean; teamB: boolean },
     ) => {
       if (!matchId || !supabase || !hasSupabaseEnv) return;
-      const isGuestServer =
-        state.present.currentServerId.startsWith("team-a-guest-") ||
-        state.present.currentServerId.startsWith("team-b-guest-");
+      const serverIdForDb = isDatabasePlayerUuid(state.present.currentServerId)
+        ? state.present.currentServerId
+        : null;
       const serving_team: "teamA" | "teamB" =
         state.present.currentServerSide === "A" ? "teamA" : "teamB";
       const isMatchPoint = matchPointTeams.teamA || matchPointTeams.teamB;
       const { error } = await supabase.from("points").insert({
         match_id: matchId,
-        server_id: isGuestServer ? null : state.present.currentServerId,
+        server_id: serverIdForDb,
         action_player_id: playerIdForPointsTable(actionPlayerId),
         point_winner_team: winner,
         ending_type: endingType,

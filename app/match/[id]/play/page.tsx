@@ -28,15 +28,20 @@ export default async function MatchPlayPage({ params, searchParams }: MatchPlayP
         status?: string | null;
         team_a_name?: string | null;
         team_b_name?: string | null;
+        setup_json?: unknown | null;
       }
     | undefined;
   if (supabase) {
     const { data } = await supabase
       .from("matches")
-      .select("scoring_type, sets_format, spectator_public, status, team_a_name, team_b_name")
+      .select("scoring_type, sets_format, spectator_public, status, team_a_name, team_b_name, setup_json")
       .eq("id", id)
       .maybeSingle();
     matchData = data ?? undefined;
+  }
+
+  if (setupData === undefined && matchData?.setup_json != null) {
+    setupData = matchData.setup_json;
   }
 
   return (

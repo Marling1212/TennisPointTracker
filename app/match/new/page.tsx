@@ -254,6 +254,7 @@ export default function NewMatchPage() {
         scoring_type: scoringType,
         sets_format: setsFormat,
         spectator_public: true,
+        setup_json: payload,
       })
       .select("id")
       .single();
