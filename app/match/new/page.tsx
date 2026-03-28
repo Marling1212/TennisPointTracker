@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 
@@ -34,7 +34,7 @@ export default function NewMatchPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [matchFormat, setMatchFormat] = useState<MatchFormat>("singles");
   const [scoringType, setScoringType] = useState<ScoringType>("Standard");
-  const [setsFormat, setSetsFormat] = useState<SetsFormat>("Best of 3 Sets");
+  const [setsFormat, setSetsFormat] = useState<SetsFormat>("1 Set");
   const [teamAMode, setTeamAMode] = useState<OpponentMode>("roster");
   const [teamARosterIds, setTeamARosterIds] = useState<string[]>([]);
   const [teamAGuestNames, setTeamAGuestNames] = useState<string[]>(["", ""]);
@@ -42,6 +42,14 @@ export default function NewMatchPage() {
   const [teamBRosterIds, setTeamBRosterIds] = useState<string[]>([]);
   const [teamBGuestNames, setTeamBGuestNames] = useState<string[]>(["", ""]);
   const [initialServerId, setInitialServerId] = useState<string>("");
+  /** Prevents duplicate match rows when Start is double-clicked / tapped before navigation. */
+  const startMatchInFlightRef = useRef(false);
+  const [isStartingMatch, setIsStartingMatch] = useState(false);
+
+  const unlockStartMatch = () => {
+    startMatchInFlightRef.current = false;
+    setIsStartingMatch(false);
+  };
 
   const requiredPlayers = matchFormat === "singles" ? 1 : 2;
 
@@ -100,6 +108,15 @@ export default function NewMatchPage() {
 
     void loadRoster();
   }, [router]);
+
+  useEffect(() => {
+    if (!isStartingMatch) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [isStartingMatch]);
 
   const selectableTeamARoster = useMemo(() => roster.filter((player) => !teamBRosterIds.includes(player.id)), [roster, teamBRosterIds]);
   const selectableTeamBRoster = useMemo(() => roster.filter((player) => !teamARosterIds.includes(player.id)), [roster, teamARosterIds]);
@@ -214,17 +231,26 @@ export default function NewMatchPage() {
 
   const startMatch = async () => {
     if (!canStartMatch) return;
+    if (startMatchInFlightRef.current) return;
+    startMatchInFlightRef.current = true;
+    setIsStartingMatch(true);
+
     if (!supabase || !hasSupabaseEnv) {
+      unlockStartMatch();
       router.replace("/login");
       return;
     }
     if (!teamId) {
+      unlockStartMatch();
       setErrorMessage("Team not found. Please refresh and try again.");
       return;
     }
 
     const initialServer = serverCandidates.find((candidate) => candidate.id === initialServerId);
-    if (!initialServer) return;
+    if (!initialServer) {
+      unlockStartMatch();
+      return;
+    }
 
     const payload = {
       matchFormat,
@@ -243,23 +269,34 @@ export default function NewMatchPage() {
       },
     };
 
-    const { data: insertedMatch, error: insertError } = await supabase
-      .from("matches")
-      .insert({
-        team_id: teamId,
-        match_type: matchFormat === "singles" ? "Singles" : "Doubles",
-        status: "In Progress",
-        team_a_name: payload.teamAName,
-        team_b_name: payload.teamBName,
-        scoring_type: scoringType,
-        sets_format: setsFormat,
-        spectator_public: true,
-        setup_json: payload,
-      })
-      .select("id")
-      .single();
+    let insertedMatch: { id: string } | null = null;
+    let insertError: { message: string } | null = null;
+    try {
+      const result = await supabase
+        .from("matches")
+        .insert({
+          team_id: teamId,
+          match_type: matchFormat === "singles" ? "Singles" : "Doubles",
+          status: "In Progress",
+          team_a_name: payload.teamAName,
+          team_b_name: payload.teamBName,
+          scoring_type: scoringType,
+          sets_format: setsFormat,
+          spectator_public: true,
+          setup_json: payload,
+        })
+        .select("id")
+        .single();
+      insertedMatch = result.data;
+      insertError = result.error;
+    } catch {
+      unlockStartMatch();
+      setErrorMessage("Unable to create match.");
+      return;
+    }
 
     if (insertError || !insertedMatch) {
+      unlockStartMatch();
       setErrorMessage(insertError?.message ?? "Unable to create match.");
       return;
     }
@@ -278,7 +315,25 @@ export default function NewMatchPage() {
   }
 
   return (
-    <main className="flex flex-1 flex-col px-4 py-6">
+    <main className="relative flex flex-1 flex-col px-4 py-6">
+      {isStartingMatch && (
+        <div
+          className="fixed inset-0 z-[100] flex touch-none flex-col items-center justify-center gap-3 bg-slate-950/92 px-6"
+          style={{ overscrollBehavior: "none" }}
+          aria-modal="true"
+          aria-busy="true"
+          aria-live="polite"
+          role="alertdialog"
+          aria-label="Starting match"
+        >
+          <div
+            className="h-10 w-10 animate-spin rounded-full border-2 border-white border-t-transparent"
+            aria-hidden
+          />
+          <p className="text-center text-lg font-bold text-white">Starting match…</p>
+          <p className="text-center text-sm text-slate-400">Please wait — do not close this page</p>
+        </div>
+      )}
       <section className="w-full rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
         <h1 className="text-2xl font-bold text-slate-900">New Match Setup</h1>
         <p className="mt-2 text-sm text-slate-600">Follow all steps to create a valid match lineup.</p>
@@ -515,13 +570,15 @@ export default function NewMatchPage() {
 
         <button
           type="button"
-          onClick={startMatch}
-          disabled={!canStartMatch}
+          onClick={() => void startMatch()}
+          disabled={!canStartMatch || isStartingMatch}
           className={`mt-6 block w-full rounded-2xl px-4 py-4 text-center text-lg font-semibold ${
-            canStartMatch ? "bg-emerald-600 text-white" : "cursor-not-allowed bg-slate-300 text-slate-500"
+            canStartMatch && !isStartingMatch
+              ? "bg-emerald-600 text-white active:bg-emerald-700"
+              : "cursor-not-allowed bg-slate-300 text-slate-500"
           }`}
         >
-          Start Match
+          {isStartingMatch ? "Starting…" : "Start Match"}
         </button>
       </section>
     </main>
