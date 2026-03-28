@@ -25,12 +25,15 @@ export default async function MatchPlayPage({ params, searchParams }: MatchPlayP
         scoring_type?: "Standard" | "No-Ad" | null;
         sets_format?: "1 Set" | "Best of 3 Sets" | "Tiebreak Only" | null;
         spectator_public?: boolean | null;
+        status?: string | null;
+        team_a_name?: string | null;
+        team_b_name?: string | null;
       }
     | undefined;
   if (supabase) {
     const { data } = await supabase
       .from("matches")
-      .select("scoring_type, sets_format, spectator_public")
+      .select("scoring_type, sets_format, spectator_public, status, team_a_name, team_b_name")
       .eq("id", id)
       .maybeSingle();
     matchData = data ?? undefined;
@@ -43,7 +46,12 @@ export default async function MatchPlayPage({ params, searchParams }: MatchPlayP
         <h1 className="text-2xl font-bold text-slate-900">Match #{id}</h1>
       </header>
 
-      <LiveScoringInput setupData={setupData} matchData={matchData} matchId={id} />
+      <LiveScoringInput
+        setupData={setupData}
+        matchData={matchData}
+        matchId={id}
+        matchStatus={matchData?.status ?? null}
+      />
     </main>
   );
 }

@@ -10,6 +10,7 @@ import {
   matchPointTeamsBeforePoint,
   type ScoreState,
 } from "@/utils/scoringEngine";
+import { hydrateLiveScoringFromPoints } from "@/utils/hydrateLiveScoringFromPoints";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 
 type TeamSide = "A" | "B";
@@ -51,6 +52,9 @@ type MatchRow = {
   scoring_type?: "Standard" | "No-Ad" | null;
   sets_format?: "1 Set" | "Best of 3 Sets" | "Tiebreak Only" | null;
   spectator_public?: boolean | null;
+  status?: string | null;
+  team_a_name?: string | null;
+  team_b_name?: string | null;
 };
 
 type MatchConfig = {
@@ -113,7 +117,11 @@ type Action =
   | { type: "SET_ACTION_PLAYER"; playerId: string }
   | { type: "SET_STROKE"; stroke: Stroke }
   | { type: "SELECT_SERVER_FOR_TEAM"; playerId: string }
-  | { type: "UNDO" };
+  | { type: "UNDO" }
+  | {
+      type: "HYDRATE";
+      payload: { present: PresentState; knownServers: Partial<Record<TeamSide, string>> };
+    };
 
 const otherPlayer = (player: Player): Player => (player === "A" ? "B" : "A");
 const otherTeam = (side: TeamSide): TeamSide => (side === "A" ? "B" : "A");
@@ -147,8 +155,8 @@ const buildConfig = (setupData: unknown, matchData?: MatchRow): MatchConfig => {
 
   return {
     matchFormat,
-    teamAName: setup.teamAName ?? "Team A",
-    teamBName: setup.teamBName ?? "Team B",
+    teamAName: setup.teamAName ?? matchData?.team_a_name ?? "Team A",
+    teamBName: setup.teamBName ?? matchData?.team_b_name ?? "Team B",
     teamAPlayers,
     teamBPlayers,
     scoringType,
@@ -272,6 +280,16 @@ function createReducer(config: MatchConfig) {
     const { present } = state;
 
     switch (action.type) {
+      case "HYDRATE": {
+        return {
+          ...state,
+          present: action.payload.present,
+          knownServers: action.payload.knownServers,
+          history: [],
+          lastCompletedPoint: null,
+          config: state.config,
+        };
+      }
       case "UNDO": {
         if (state.history.length === 0) return state;
 
@@ -449,9 +467,11 @@ type LiveScoringInputProps = {
   setupData?: unknown;
   matchData?: MatchRow;
   matchId?: string;
+  /** From DB; used to redirect off /play when the match is already finished. */
+  matchStatus?: string | null;
 };
 
-export default function LiveScoringInput({ setupData, matchData, matchId }: LiveScoringInputProps) {
+export default function LiveScoringInput({ setupData, matchData, matchId, matchStatus }: LiveScoringInputProps) {
   const router = useRouter();
   const config = buildConfig(setupData, matchData);
   const [state, dispatch] = useReducer(createReducer(config), config, buildInitialState);
@@ -462,6 +482,9 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
   const [spectatorPublic, setSpectatorPublic] = useState(() => matchData?.spectator_public !== false);
   const [spectatorSaving, setSpectatorSaving] = useState(false);
   const [autoLinkToast, setAutoLinkToast] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(() =>
+    Boolean(matchId && matchStatus !== "Completed"),
+  );
   const hasTriggeredFinishRef = useRef(false);
 
   const getDisplayPlayerName = (player: CourtPlayer): string =>
@@ -507,6 +530,81 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
     };
   }, [matchId, spectatorPublic]);
 
+  useEffect(() => {
+    if (matchStatus === "Completed" && matchId) {
+      setIsInitializing(false);
+      router.replace(`/match/${matchId}/stats`);
+    }
+  }, [matchId, matchStatus, router]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!matchId || !client || !hasSupabaseEnv) {
+      setIsInitializing(false);
+      return;
+    }
+    if (matchStatus === "Completed") return;
+
+    let cancelled = false;
+
+    const run = async () => {
+      setIsInitializing(true);
+      const { data: rows, error } = await client
+        .from("points")
+        .select("point_winner_team, server_id, serving_team, created_at")
+        .eq("match_id", matchId)
+        .order("created_at", { ascending: true });
+
+      if (cancelled) return;
+
+      if (error) {
+        setPointSaveError(error.message);
+        setIsInitializing(false);
+        return;
+      }
+
+      const list = rows ?? [];
+      if (list.length === 0) {
+        setIsInitializing(false);
+        return;
+      }
+
+      const hydrated = hydrateLiveScoringFromPoints(
+        {
+          matchFormat: config.matchFormat,
+          teamAPlayers: config.teamAPlayers,
+          teamBPlayers: config.teamBPlayers,
+          scoringType: config.scoringType,
+          setsFormat: config.setsFormat,
+          initialServerId: config.initialServerId,
+          initialServerSide: config.initialServerSide,
+          knownServers: config.knownServers,
+        },
+        list,
+      );
+
+      dispatch({
+        type: "HYDRATE",
+        payload: {
+          present: {
+            ...hydrated.present,
+            draft: { serveSequence: [] },
+          } as PresentState,
+          knownServers: hydrated.knownServers,
+        },
+      });
+      setIsInitializing(false);
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+    // Intentionally run once per match id / status — config comes from props for this mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate once when opening scoring for this match
+  }, [matchId, matchStatus]);
+
   const finishMatch = useCallback(async () => {
     const summaries = state.present.completedSetScores;
     const sets = state.present.scoreState.sets;
@@ -536,7 +634,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
     };
   }, [finishMatch, state.present.scoreState]);
 
-  const isInputDisabled = state.present.scoreState.isMatchOver || isSavingPoint;
+  const isInputDisabled = state.present.scoreState.isMatchOver || isSavingPoint || isInitializing;
 
   const logPointToDatabase = useCallback(
     async (
@@ -723,6 +821,12 @@ export default function LiveScoringInput({ setupData, matchData, matchId }: Live
 
   return (
     <div className="relative flex h-full w-full min-h-0 flex-col bg-slate-950">
+      {isInitializing && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-slate-950/90 px-4 text-center">
+          <p className="text-lg font-black text-white">Loading match…</p>
+          <p className="text-sm text-slate-400">Restoring score from saved points</p>
+        </div>
+      )}
       <div className="flex items-center justify-between border-b border-slate-700 bg-slate-900/95 px-3 py-2">
         <button
           type="button"

@@ -438,13 +438,22 @@ export default function TeamStatsPage() {
                   <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
                     Format: {match.match_type ?? "Unknown"}
                   </p>
-                  <div className="mt-3 flex items-center gap-2">
-                    <Link
-                      href={`/match/${match.id}/stats`}
-                      className="inline-flex items-center rounded-lg border-2 border-slate-900 bg-slate-900 px-3 py-2 text-xs font-bold text-white"
-                    >
-                      View Match Stats
-                    </Link>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {match.status === "Completed" ? (
+                      <Link
+                        href={`/match/${match.id}/stats`}
+                        className="inline-flex items-center rounded-lg border-2 border-slate-900 bg-slate-900 px-3 py-2 text-xs font-bold text-white"
+                      >
+                        View Match Stats
+                      </Link>
+                    ) : (
+                      <Link
+                        href={`/match/${match.id}/play`}
+                        className="inline-flex items-center rounded-lg border-2 border-blue-700 bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-500"
+                      >
+                        Resume Match
+                      </Link>
+                    )}
                     <button
                       type="button"
                       onClick={() => openDeleteModal(match.id)}
