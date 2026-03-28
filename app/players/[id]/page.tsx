@@ -24,6 +24,9 @@ type MatchRow = {
   team_a_name: string | null;
   team_b_name: string | null;
   created_at: string;
+  status: string | null;
+  winning_team: "teamA" | "teamB" | null;
+  is_manual_entry: boolean | null;
 };
 
 type PointRow = {
@@ -96,7 +99,9 @@ export default function PlayerCardPage() {
 
       const { data: matchesData, error: matchesError } = await supabase
         .from("matches")
-        .select("id, match_type, team_a_name, team_b_name, created_at")
+        .select(
+          "id, match_type, team_a_name, team_b_name, created_at, status, winning_team, is_manual_entry",
+        )
         .or(`team_a_name.eq.${teamData.name},team_b_name.eq.${teamData.name}`)
         .order("created_at", { ascending: false });
 
@@ -115,13 +120,20 @@ export default function PlayerCardPage() {
         return;
       }
 
+      const pointTrackedMatchIds = playedMatches
+        .filter((m) => m.is_manual_entry !== true)
+        .map((m) => m.id);
+
+      if (pointTrackedMatchIds.length === 0) {
+        setPoints([]);
+        setIsLoading(false);
+        return;
+      }
+
       const { data: pointsData, error: pointsError } = await supabase
         .from("points")
         .select("id, match_id, server_id, point_winner_team, ending_type, created_at")
-        .in(
-          "match_id",
-          playedMatches.map((match) => match.id),
-        )
+        .in("match_id", pointTrackedMatchIds)
         .order("created_at", { ascending: false });
 
       if (pointsError) {
@@ -176,6 +188,16 @@ export default function PlayerCardPage() {
             : null;
 
       if (!side) continue;
+
+      if (match.status === "Completed") {
+        if (match.winning_team === "teamA" || match.winning_team === "teamB") {
+          if (side === match.winning_team) wins += 1;
+          else losses += 1;
+          continue;
+        }
+        if (match.is_manual_entry === true) continue;
+      }
+
       const pointsForMatch = relevantPoints.filter((point) => point.match_id === match.id);
       const teamAPoints = pointsForMatch.filter((point) => point.point_winner_team === "teamA").length;
       const teamBPoints = pointsForMatch.filter((point) => point.point_winner_team === "teamB").length;

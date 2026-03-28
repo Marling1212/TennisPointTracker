@@ -25,6 +25,8 @@ type RosterPlayerRow = {
   nickname: string | null;
 };
 
+type EntryMode = "live" | "past";
+
 export default function NewMatchPage() {
   const router = useRouter();
   const [roster, setRoster] = useState<CourtPlayer[]>([]);
@@ -42,13 +44,18 @@ export default function NewMatchPage() {
   const [teamBRosterIds, setTeamBRosterIds] = useState<string[]>([]);
   const [teamBGuestNames, setTeamBGuestNames] = useState<string[]>(["", ""]);
   const [initialServerId, setInitialServerId] = useState<string>("");
+  const [entryMode, setEntryMode] = useState<EntryMode>("live");
+  const [pastWinningTeam, setPastWinningTeam] = useState<"" | "teamA" | "teamB">("");
+  const [pastScoreSummary, setPastScoreSummary] = useState("");
   /** Prevents duplicate match rows when Start is double-clicked / tapped before navigation. */
   const startMatchInFlightRef = useRef(false);
   const [isStartingMatch, setIsStartingMatch] = useState(false);
+  const [isSavingPast, setIsSavingPast] = useState(false);
 
   const unlockStartMatch = () => {
     startMatchInFlightRef.current = false;
     setIsStartingMatch(false);
+    setIsSavingPast(false);
   };
 
   const requiredPlayers = matchFormat === "singles" ? 1 : 2;
@@ -110,13 +117,13 @@ export default function NewMatchPage() {
   }, [router]);
 
   useEffect(() => {
-    if (!isStartingMatch) return;
+    if (!isStartingMatch && !isSavingPast) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [isStartingMatch]);
+  }, [isStartingMatch, isSavingPast]);
 
   const selectableTeamARoster = useMemo(() => roster.filter((player) => !teamBRosterIds.includes(player.id)), [roster, teamBRosterIds]);
   const selectableTeamBRoster = useMemo(() => roster.filter((player) => !teamARosterIds.includes(player.id)), [roster, teamARosterIds]);
@@ -225,12 +232,87 @@ export default function NewMatchPage() {
 
   const serverCandidates = [...teamAPlayers, ...teamBPlayers];
   const hasValidInitialServer = serverCandidates.some((candidate) => candidate.id === initialServerId);
-  const canStartMatch = isTeamsReady && hasValidInitialServer;
+  const canStartLive = isTeamsReady && hasValidInitialServer;
+  const canSavePast =
+    entryMode === "past" &&
+    isTeamsReady &&
+    (pastWinningTeam === "teamA" || pastWinningTeam === "teamB") &&
+    pastScoreSummary.trim().length > 0;
   const teamALabel = teamAPlayers.map((player) => player.name).join(" / ") || (teamAMode === "roster" ? teamName : "Guest Team A");
   const teamBLabel = teamBPlayers.map((player) => player.name).join(" / ") || (teamBMode === "roster" ? `${teamName} Roster B` : "Guest Team B");
 
+  const savePastMatch = async () => {
+    if (!canSavePast) return;
+    if (startMatchInFlightRef.current) return;
+    startMatchInFlightRef.current = true;
+    setIsSavingPast(true);
+
+    if (!supabase || !hasSupabaseEnv) {
+      unlockStartMatch();
+      router.replace("/login");
+      return;
+    }
+    if (!teamId) {
+      unlockStartMatch();
+      setErrorMessage("Team not found. Please refresh and try again.");
+      return;
+    }
+
+    const teamAName = teamAPlayers.map((player) => player.name).join(" / ") || teamALabel;
+    const teamBName = teamBPlayers.map((player) => player.name).join(" / ") || teamBLabel;
+    const minimalSetup = {
+      matchFormat,
+      scoringType,
+      setsFormat,
+      teamAName,
+      teamBName,
+      teamAPlayers,
+      teamBPlayers,
+      teamAMode,
+      teamBMode,
+      manualEntry: true,
+    };
+
+    let insertedMatch: { id: string } | null = null;
+    let insertError: { message: string } | null = null;
+    try {
+      const result = await supabase
+        .from("matches")
+        .insert({
+          team_id: teamId,
+          match_type: matchFormat === "singles" ? "Singles" : "Doubles",
+          status: "Completed",
+          is_manual_entry: true,
+          winning_team: pastWinningTeam,
+          score_summary: pastScoreSummary.trim(),
+          team_a_name: teamAName,
+          team_b_name: teamBName,
+          scoring_type: scoringType,
+          sets_format: setsFormat,
+          spectator_public: true,
+          setup_json: minimalSetup,
+        })
+        .select("id")
+        .single();
+      insertedMatch = result.data;
+      insertError = result.error;
+    } catch {
+      unlockStartMatch();
+      setErrorMessage("Unable to save match.");
+      return;
+    }
+
+    if (insertError || !insertedMatch) {
+      unlockStartMatch();
+      setErrorMessage(insertError?.message ?? "Unable to save match.");
+      return;
+    }
+
+    router.push(`/match/${insertedMatch.id}/stats`);
+  };
+
   const startMatch = async () => {
-    if (!canStartMatch) return;
+    if (!canStartLive) return;
     if (startMatchInFlightRef.current) return;
     startMatchInFlightRef.current = true;
     setIsStartingMatch(true);
@@ -278,6 +360,7 @@ export default function NewMatchPage() {
           team_id: teamId,
           match_type: matchFormat === "singles" ? "Singles" : "Doubles",
           status: "In Progress",
+          is_manual_entry: false,
           team_a_name: payload.teamAName,
           team_b_name: payload.teamBName,
           scoring_type: scoringType,
@@ -316,7 +399,7 @@ export default function NewMatchPage() {
 
   return (
     <main className="relative flex flex-1 flex-col px-4 py-6">
-      {isStartingMatch && (
+      {(isStartingMatch || isSavingPast) && (
         <div
           className="fixed inset-0 z-[100] flex touch-none flex-col items-center justify-center gap-3 bg-slate-950/92 px-6"
           style={{ overscrollBehavior: "none" }}
@@ -324,13 +407,15 @@ export default function NewMatchPage() {
           aria-busy="true"
           aria-live="polite"
           role="alertdialog"
-          aria-label="Starting match"
+          aria-label={isSavingPast ? "Saving match" : "Starting match"}
         >
           <div
             className="h-10 w-10 animate-spin rounded-full border-2 border-white border-t-transparent"
             aria-hidden
           />
-          <p className="text-center text-lg font-bold text-white">Starting match…</p>
+          <p className="text-center text-lg font-bold text-white">
+            {isSavingPast ? "Saving match…" : "Starting match…"}
+          </p>
           <p className="text-center text-sm text-slate-400">Please wait — do not close this page</p>
         </div>
       )}
@@ -338,6 +423,38 @@ export default function NewMatchPage() {
         <h1 className="text-2xl font-bold text-slate-900">New Match Setup</h1>
         <p className="mt-2 text-sm text-slate-600">Follow all steps to create a valid match lineup.</p>
         {errorMessage && <p className="mt-2 text-sm text-red-600">{errorMessage}</p>}
+
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setEntryMode("live");
+              setErrorMessage("");
+            }}
+            className={`rounded-xl px-3 py-3 text-sm font-bold ${
+              entryMode === "live" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-800"
+            }`}
+          >
+            Play live match
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setEntryMode("past");
+              setErrorMessage("");
+            }}
+            className={`rounded-xl px-3 py-3 text-sm font-bold ${
+              entryMode === "past" ? "bg-amber-700 text-white" : "bg-slate-100 text-slate-800"
+            }`}
+          >
+            Log past match
+          </button>
+        </div>
+        {entryMode === "past" && (
+          <p className="mt-2 text-xs text-amber-900/90">
+            No point-by-point data — used for record and win rate only. Shot stats stay based on tracked matches.
+          </p>
+        )}
 
         <div className="mt-6 space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 1: Match Format</p>
@@ -363,6 +480,7 @@ export default function NewMatchPage() {
           </div>
         </div>
 
+        {entryMode === "live" && (
         <div className="mt-6 space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 1B: Match Rules</p>
           <div className="grid grid-cols-2 gap-3">
@@ -400,6 +518,7 @@ export default function NewMatchPage() {
             ))}
           </div>
         </div>
+        )}
 
         <div className="mt-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 2: Define Team A ({teamName})</p>
@@ -522,7 +641,41 @@ export default function NewMatchPage() {
           )}
         </div>
 
-        {isTeamsReady && (
+        {entryMode === "past" && isTeamsReady && (
+          <div className="mt-6 space-y-3 rounded-xl border border-amber-200 bg-amber-50/80 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">Past match result</p>
+            <div>
+              <label htmlFor="past-winner" className="block text-xs font-semibold text-slate-700">
+                Who won?
+              </label>
+              <select
+                id="past-winner"
+                value={pastWinningTeam}
+                onChange={(e) => setPastWinningTeam(e.target.value as "" | "teamA" | "teamB")}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+              >
+                <option value="">Select winner</option>
+                <option value="teamA">Team A — {teamALabel}</option>
+                <option value="teamB">Team B — {teamBLabel}</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="past-score" className="block text-xs font-semibold text-slate-700">
+                Final score
+              </label>
+              <input
+                id="past-score"
+                type="text"
+                value={pastScoreSummary}
+                onChange={(e) => setPastScoreSummary(e.target.value)}
+                placeholder='e.g. 6-4, 6-2'
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400"
+              />
+            </div>
+          </div>
+        )}
+
+        {entryMode === "live" && isTeamsReady && (
           <div className="mt-6">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 4: Who Is Serving First?</p>
             <p className="mt-1 text-xs text-slate-600">Select exactly one player to start serving.</p>
@@ -570,15 +723,19 @@ export default function NewMatchPage() {
 
         <button
           type="button"
-          onClick={() => void startMatch()}
-          disabled={!canStartMatch || isStartingMatch}
+          onClick={() => (entryMode === "live" ? void startMatch() : void savePastMatch())}
+          disabled={
+            (entryMode === "live" ? !canStartLive : !canSavePast) || isStartingMatch || isSavingPast
+          }
           className={`mt-6 block w-full rounded-2xl px-4 py-4 text-center text-lg font-semibold ${
-            canStartMatch && !isStartingMatch
-              ? "bg-emerald-600 text-white active:bg-emerald-700"
+            (entryMode === "live" ? canStartLive : canSavePast) && !isStartingMatch && !isSavingPast
+              ? entryMode === "live"
+                ? "bg-emerald-600 text-white active:bg-emerald-700"
+                : "bg-amber-600 text-white active:bg-amber-700"
               : "cursor-not-allowed bg-slate-300 text-slate-500"
           }`}
         >
-          {isStartingMatch ? "Starting…" : "Start Match"}
+          {isStartingMatch ? "Starting…" : isSavingPast ? "Saving…" : entryMode === "live" ? "Start Match" : "Save past match"}
         </button>
       </section>
     </main>

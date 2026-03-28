@@ -617,10 +617,17 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
     const sets = state.present.scoreState.sets;
     const finalScoreString =
       summaries.length > 0 ? summaries.join(", ") : `${sets.teamA}-${sets.teamB}`;
+    const winning_team: "teamA" | "teamB" =
+      sets.teamA > sets.teamB ? "teamA" : sets.teamB > sets.teamA ? "teamB" : "teamA";
     if (matchId && supabase && hasSupabaseEnv) {
       await supabase
         .from("matches")
-        .update({ status: "Completed", score_summary: finalScoreString })
+        .update({
+          status: "Completed",
+          score_summary: finalScoreString,
+          winning_team,
+          is_manual_entry: false,
+        })
         .eq("id", matchId);
     }
     router.push(matchId ? `/match/${matchId}/stats` : "/");

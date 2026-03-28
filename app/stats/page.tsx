@@ -29,6 +29,8 @@ type MatchRow = {
   created_at: string;
   scoring_type: "Standard" | "No-Ad" | null;
   sets_format: "1 Set" | "Best of 3 Sets" | "Tiebreak Only" | null;
+  is_manual_entry: boolean | null;
+  winning_team: "teamA" | "teamB" | null;
 };
 
 type PointRow = {
@@ -218,7 +220,9 @@ export default function TeamStatsPage() {
 
       const { data: matchesData, error: matchesError } = await supabase
         .from("matches")
-        .select("id, match_type, team_a_name, team_b_name, status, score_summary, created_at, scoring_type, sets_format")
+        .select(
+          "id, match_type, team_a_name, team_b_name, status, score_summary, created_at, scoring_type, sets_format, is_manual_entry, winning_team",
+        )
         .eq("team_id", teamData.id)
         .order("created_at", { ascending: false });
 
@@ -238,13 +242,18 @@ export default function TeamStatsPage() {
         return;
       }
 
+      const pointTrackedMatchIds = allMatches.filter((m) => m.is_manual_entry !== true).map((m) => m.id);
+
+      if (pointTrackedMatchIds.length === 0) {
+        setPoints([]);
+        setIsLoading(false);
+        return;
+      }
+
       const { data: pointsData, error: pointsError } = await supabase
         .from("points")
         .select("id, match_id, server_id, point_winner_team, ending_type")
-        .in(
-          "match_id",
-          allMatches.map((match) => match.id),
-        );
+        .in("match_id", pointTrackedMatchIds);
 
       if (pointsError) {
         console.error("Supabase Fetch Error:", pointsError);
@@ -282,7 +291,16 @@ export default function TeamStatsPage() {
           const myPoints = pointsInMatch.filter((point) => point.point_winner_team === mySide).length;
           const oppPoints = pointsInMatch.filter((point) => point.point_winner_team && point.point_winner_team !== mySide).length;
           pointsWon += myPoints;
-          if (myPoints > oppPoints) matchesWon += 1;
+
+          if (match.status === "Completed") {
+            if (match.winning_team === "teamA" || match.winning_team === "teamB") {
+              if (match.winning_team === mySide) matchesWon += 1;
+            } else if (match.is_manual_entry !== true) {
+              if (myPoints > oppPoints) matchesWon += 1;
+            }
+          } else if (match.status === "In Progress") {
+            if (myPoints > oppPoints) matchesWon += 1;
+          }
         }
 
         const matchesPlayed = playerMatches.length;
@@ -316,6 +334,7 @@ export default function TeamStatsPage() {
         let gamesWon = 0;
         let totalGamesPlayed = 0;
         for (const match of playerMatches) {
+          if (match.is_manual_entry === true) continue;
           const isTeamAPlayer = (match.team_a_name ?? "").includes(fullName);
           const mySide: "teamA" | "teamB" = isTeamAPlayer ? "teamA" : "teamB";
           const ptsInMatch = playerPoints.filter((point) => point.match_id === match.id);
