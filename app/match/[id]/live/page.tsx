@@ -25,6 +25,14 @@ type MatchLiveRow = {
   spectator_public: boolean;
 };
 
+type ChatMessageRow = {
+  id: string;
+  match_id: string;
+  sender_name: string;
+  content: string;
+  created_at: string;
+};
+
 /** 16:9 video + optional overlay; entire stage can go browser-fullscreen (not just the FB iframe). */
 function VideoStage({
   streamUrl,
@@ -219,6 +227,12 @@ export default function SpectatorLivePage() {
   const [ready, setReady] = useState(false);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
+  const [chatMessages, setChatMessages] = useState<ChatMessageRow[]>([]);
+  const [newMessage, setNewMessage] = useState("");
+  const [nickname, setNickname] = useState(() => `Fan_${Math.floor(1000 + Math.random() * 9000)}`);
+  const [chatError, setChatError] = useState("");
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+
   const rules: MatchRules = useMemo(() => {
     return {
       scoringType: match?.scoring_type ?? "Standard",
@@ -270,6 +284,51 @@ export default function SpectatorLivePage() {
       void refetchAllPoints();
     }
   }, [ready, match, refetchAllPoints]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!matchId || !client || !hasSupabaseEnv || !ready || !match) return;
+    if (match.spectator_public === false) return;
+
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await client
+        .from("chat_messages")
+        .select("id, match_id, sender_name, content, created_at")
+        .eq("match_id", matchId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (cancelled) return;
+      if (error) {
+        setChatError(error.message);
+        return;
+      }
+      setChatMessages([...(data ?? [])].reverse() as ChatMessageRow[]);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [matchId, ready, match]);
+
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
+
+  const sendMessage = useCallback(async () => {
+    if (!newMessage.trim() || !supabase || !hasSupabaseEnv || !matchId) return;
+    setChatError("");
+    const { error } = await supabase.from("chat_messages").insert({
+      match_id: matchId,
+      sender_name: nickname.trim() || "Fan",
+      content: newMessage.trim(),
+    });
+    if (error) {
+      setChatError(error.message);
+      return;
+    }
+    setNewMessage("");
+  }, [newMessage, nickname, matchId]);
 
   useEffect(() => {
     const client = supabase;
@@ -388,6 +447,15 @@ export default function SpectatorLivePage() {
               setPoints([]);
             }
           }
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "chat_messages", filter: `match_id=eq.${matchId}` },
+        (payload) => {
+          const row = payload.new as ChatMessageRow;
+          if (!row?.id) return;
+          setChatMessages((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
         },
       )
       .subscribe();
@@ -557,6 +625,66 @@ export default function SpectatorLivePage() {
           </p>
         </>
       )}
+
+      <section
+        className="w-full max-w-lg flex-shrink-0 border-t border-zinc-800 px-3 pb-6 pt-3 print:hidden"
+        aria-label="VIP Team Chat"
+      >
+        <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-zinc-400">VIP Team Chat</h2>
+        <div className="h-72 overflow-y-auto rounded-lg bg-gray-50 px-2 py-2 text-sm text-slate-900 shadow-inner">
+          {chatMessages.map((msg) => (
+            <p key={msg.id} className="break-words py-0.5 leading-snug">
+              <span className="font-bold text-blue-600">{msg.sender_name}</span>: {msg.content}
+            </p>
+          ))}
+          <div ref={chatBottomRef} />
+        </div>
+        {chatError ? <p className="mt-1 text-xs text-red-400">{chatError}</p> : null}
+        <div className="mt-3 space-y-2">
+          <div>
+            <label htmlFor="spectator-chat-nick" className="mb-1 block text-[10px] font-semibold text-zinc-500">
+              Your name
+            </label>
+            <input
+              id="spectator-chat-nick"
+              type="text"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-2 py-1.5 text-xs text-white placeholder:text-zinc-500"
+              placeholder="Your name"
+              maxLength={80}
+              autoComplete="off"
+            />
+          </div>
+          <div>
+            <label htmlFor="spectator-chat-msg" className="mb-1 block text-[10px] font-semibold text-zinc-500">
+              Message
+            </label>
+            <textarea
+              id="spectator-chat-msg"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void sendMessage();
+                }
+              }}
+              rows={2}
+              className="w-full resize-none rounded-md border border-zinc-600 bg-zinc-900 px-2 py-2 text-sm text-white placeholder:text-zinc-500"
+              placeholder="Say something…"
+              maxLength={2000}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => void sendMessage()}
+            className="w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500"
+          >
+            Send
+          </button>
+        </div>
+      </section>
     </main>
   );
 }
