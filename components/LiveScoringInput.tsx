@@ -27,7 +27,7 @@ type Phase =
 type Player = TeamSide;
 type Stroke = "Forehand" | "Backhand" | "Volley" | "Overhead";
 type Outcome = "Winner" | "Unforced Error" | "Forced Error";
-type ServeEvent = "1st Serve IN" | "FAULT" | "2nd Serve IN" | "ACE" | "DOUBLE FAULT";
+type ServeEvent = "1st Serve IN" | "FAULT" | "2nd Serve IN" | "ACE" | "SERVICE WINNER" | "DOUBLE FAULT";
 type MatchFormat = "singles" | "doubles";
 
 type CourtPlayer = {
@@ -56,6 +56,7 @@ type MatchRow = {
   status?: string | null;
   team_a_name?: string | null;
   team_b_name?: string | null;
+  stream_url?: string | null;
 };
 
 type MatchConfig = {
@@ -82,7 +83,7 @@ type PointDraft = {
 type FinalPointPayload = {
   serveSequence: ServeEvent[];
   pointWinner: Player | "Server" | "Receiver";
-  pointOutcome: Outcome | "Ace" | "Double Fault";
+  pointOutcome: Outcome | "Ace" | "Service Winner" | "Double Fault";
   stroke?: Stroke;
   strokeAssignedTo?: Player;
   actionPlayerId?: string;
@@ -112,6 +113,7 @@ type Action =
   | { type: "FAULT" }
   | { type: "SECOND_SERVE_IN" }
   | { type: "ACE" }
+  | { type: "SERVICE_WINNER" }
   | { type: "DOUBLE_FAULT" }
   | { type: "SET_POINT_WINNER"; winner: Player }
   | { type: "SET_POINT_OUTCOME"; outcome: Outcome }
@@ -366,6 +368,17 @@ function createReducer(config: MatchConfig) {
         };
         return finalizePoint(state, payload);
       }
+      case "SERVICE_WINNER": {
+        if (present.phase !== "serve-first" && present.phase !== "serve-second") return state;
+
+        const payload: FinalPointPayload = {
+          serveSequence: [...present.draft.serveSequence, "SERVICE WINNER"],
+          pointWinner: "Server",
+          pointOutcome: "Service Winner",
+          actionPlayerId: present.currentServerId,
+        };
+        return finalizePoint(state, payload);
+      }
       case "DOUBLE_FAULT": {
         if (present.phase !== "serve-second") return state;
 
@@ -448,6 +461,7 @@ function createReducer(config: MatchConfig) {
 
 const baseActionButton = "w-full rounded-xl px-4 py-4 text-base font-extrabold shadow-md active:translate-y-px active:shadow-sm";
 const serveButton = `${baseActionButton} border-2 border-slate-200 bg-blue-700 text-white`;
+const serviceWinnerButton = `${baseActionButton} border-2 border-teal-200 bg-teal-600 text-white`;
 const firstServeFaultButton = `${baseActionButton} border-2 border-amber-100 bg-amber-600 text-white ring-2 ring-amber-300/80 shadow-[0_0_12px_rgba(251,191,36,0.45)]`;
 const winnerButton = `${baseActionButton} border-2 border-emerald-200 bg-emerald-600 text-white`;
 const unforcedErrorButton = `${baseActionButton} border-2 border-red-200 bg-red-600 text-white`;
@@ -491,6 +505,8 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
   const [spectatorPublic, setSpectatorPublic] = useState(() => matchData?.spectator_public !== false);
   const [spectatorSaving, setSpectatorSaving] = useState(false);
   const [autoLinkToast, setAutoLinkToast] = useState(false);
+  const [streamUrlLocal, setStreamUrlLocal] = useState<string | null>(matchData?.stream_url ?? null);
+  const [streamUrlSaving, setStreamUrlSaving] = useState(false);
   const [isInitializing, setIsInitializing] = useState(() =>
     Boolean(matchId && matchStatus !== "Completed"),
   );
@@ -519,6 +535,10 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
   useEffect(() => {
     setSpectatorPublic(matchData?.spectator_public !== false);
   }, [matchData?.spectator_public]);
+
+  useEffect(() => {
+    setStreamUrlLocal(matchData?.stream_url ?? null);
+  }, [matchData?.stream_url]);
 
   useEffect(() => {
     if (!matchId || typeof window === "undefined") return;
@@ -728,6 +748,39 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
     state.present.scoreState,
   ]);
 
+  const handleServiceWinner = useCallback(async () => {
+    if (isSavingPoint || isInputDisabled) return;
+    setIsSavingPoint(true);
+    setPointSaveError("");
+    const winner: "teamA" | "teamB" = state.present.currentServerSide === "A" ? "teamA" : "teamB";
+    const isNoAd = config.scoringType === "No-Ad";
+    const isBp = isBreakPointBeforePoint(state.present.scoreState, state.present.currentServerSide, isNoAd);
+    const mpTeams = matchPointTeamsBeforePoint(state.present.scoreState, isNoAd, config.setsFormat);
+    const startScore = formatStartScoreForPointLog(state.present.scoreState);
+    try {
+      await logPointToDatabase(winner, "Service Winner", null, state.present.currentServerId, isBp, mpTeams, {
+        isFirstServe,
+        startScore,
+      });
+    } catch (error) {
+      setPointSaveError(error instanceof Error ? error.message : "Failed to save point.");
+    } finally {
+      dispatch({ type: "SERVICE_WINNER" });
+      setIsFirstServe(true);
+      setIsSavingPoint(false);
+    }
+  }, [
+    config.scoringType,
+    config.setsFormat,
+    isFirstServe,
+    isInputDisabled,
+    isSavingPoint,
+    logPointToDatabase,
+    state.present.currentServerId,
+    state.present.currentServerSide,
+    state.present.scoreState,
+  ]);
+
   const handleDoubleFault = useCallback(async () => {
     if (isSavingPoint || isInputDisabled) return;
     setIsSavingPoint(true);
@@ -859,6 +912,22 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
     }
   };
 
+  const handleEditStreamLink = useCallback(async () => {
+    if (!matchId || !supabase || !hasSupabaseEnv) return;
+    const current = streamUrlLocal ?? "";
+    const next = window.prompt("Facebook Live stream URL (leave empty to clear)", current);
+    if (next === null) return;
+    setStreamUrlSaving(true);
+    const trimmed = next.trim();
+    const { error } = await supabase.from("matches").update({ stream_url: trimmed || null }).eq("id", matchId);
+    setStreamUrlSaving(false);
+    if (error) {
+      setPointSaveError(error.message);
+      return;
+    }
+    setStreamUrlLocal(trimmed || null);
+  }, [matchId, streamUrlLocal]);
+
   return (
     <div className="relative flex h-full w-full min-h-0 flex-col bg-slate-950">
       {isInitializing && (
@@ -919,19 +988,29 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
 
       {matchId && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900/80 px-3 py-1.5">
-          <label className="flex cursor-pointer items-center gap-2 text-[10px] text-slate-300">
+          <label className="flex min-w-0 cursor-pointer items-center gap-2 text-[10px] text-slate-300">
             <input
               type="checkbox"
-              className="h-3.5 w-3.5 rounded border-slate-500 bg-slate-800"
+              className="h-3.5 w-3.5 shrink-0 rounded border-slate-500 bg-slate-800"
               checked={spectatorPublic}
               disabled={spectatorSaving || !supabase || !hasSupabaseEnv}
               onChange={(e) => void handleSpectatorPublicChange(e.target.checked)}
             />
             <span>Public live page (spectators can open /match/…/live)</span>
           </label>
-          {autoLinkToast && spectatorPublic && (
-            <span className="text-[10px] font-semibold text-emerald-400">Live link copied — paste to share</span>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleEditStreamLink()}
+              disabled={streamUrlSaving || !supabase || !hasSupabaseEnv}
+              className="rounded-md border border-sky-600/80 bg-sky-950/80 px-2 py-1 text-[10px] font-semibold text-sky-100 hover:bg-sky-900/80 disabled:opacity-50"
+            >
+              {streamUrlSaving ? "Saving…" : "Edit stream link"}
+            </button>
+            {autoLinkToast && spectatorPublic && (
+              <span className="text-[10px] font-semibold text-emerald-400">Live link copied — paste to share</span>
+            )}
+          </div>
         </div>
       )}
 
@@ -987,6 +1066,14 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                 <button type="button" className={serveButton} onClick={() => void handleAce()} disabled={isInputDisabled}>
                   ACE
                 </button>
+                <button
+                  type="button"
+                  className={serviceWinnerButton}
+                  onClick={() => void handleServiceWinner()}
+                  disabled={isInputDisabled}
+                >
+                  Service Winner
+                </button>
               </>
             )}
 
@@ -1000,6 +1087,14 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                 </button>
                 <button type="button" className={serveButton} onClick={() => void handleAce()} disabled={isInputDisabled}>
                   ACE
+                </button>
+                <button
+                  type="button"
+                  className={serviceWinnerButton}
+                  onClick={() => void handleServiceWinner()}
+                  disabled={isInputDisabled}
+                >
+                  Service Winner
                 </button>
               </>
             )}
@@ -1108,6 +1203,14 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                 <button type="button" className={serveButton} onClick={() => void handleAce()} disabled={isInputDisabled}>
                   ACE
                 </button>
+                <button
+                  type="button"
+                  className={serviceWinnerButton}
+                  onClick={() => void handleServiceWinner()}
+                  disabled={isInputDisabled}
+                >
+                  Service Winner
+                </button>
               </>
             )}
 
@@ -1121,6 +1224,14 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                 </button>
                 <button type="button" className={serveButton} onClick={() => void handleAce()} disabled={isInputDisabled}>
                   ACE
+                </button>
+                <button
+                  type="button"
+                  className={serviceWinnerButton}
+                  onClick={() => void handleServiceWinner()}
+                  disabled={isInputDisabled}
+                >
+                  Service Winner
                 </button>
               </>
             )}

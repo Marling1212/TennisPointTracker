@@ -40,7 +40,7 @@ type PointRow = {
   server_id: string | null;
   action_player_id: string | null;
   point_winner_team: "teamA" | "teamB" | null;
-  ending_type: "Winner" | "Unforced Error" | "Forced Error" | "Ace" | "Double Fault" | null;
+  ending_type: "Winner" | "Unforced Error" | "Forced Error" | "Ace" | "Service Winner" | "Double Fault" | null;
 };
 
 type SortKey =
@@ -66,6 +66,7 @@ type PlayerStats = {
   pointsWon: number;
   pointWinRate: number;
   aces: number;
+  serviceWinners: number;
   doubleFaults: number;
   winners: number;
   unforcedErrors: number;
@@ -356,6 +357,7 @@ export default function TeamStatsPage() {
           pointsWon,
           pointWinRate,
           aces: servingPoints.filter((point) => point.ending_type === "Ace").length,
+          serviceWinners: servingPoints.filter((point) => point.ending_type === "Service Winner").length,
           doubleFaults: servingPoints.filter((point) => point.ending_type === "Double Fault").length,
           winners,
           unforcedErrors,
@@ -430,6 +432,7 @@ export default function TeamStatsPage() {
                   <th className="px-3 py-2 text-right">Avg W / Gm</th>
                   <th className="px-3 py-2 text-right">Avg UE / Gm</th>
                   <th className="px-3 py-2 text-right">Aces</th>
+                  <th className="px-3 py-2 text-right">Svc W</th>
                   <th className="px-3 py-2 text-right">DF</th>
                   <th className="px-3 py-2 text-right">Winners</th>
                   <th className="px-3 py-2 text-right">UE</th>
@@ -440,7 +443,7 @@ export default function TeamStatsPage() {
               <tbody>
                 {playerStats.length === 0 ? (
                   <tr>
-                    <td colSpan={16} className="px-3 py-3 text-sm text-slate-700">
+                    <td colSpan={17} className="px-3 py-3 text-sm text-slate-700">
                       No players found. Add players in Team Roster.
                     </td>
                   </tr>
@@ -463,6 +466,7 @@ export default function TeamStatsPage() {
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.avgWinnersPerGame.toFixed(2)}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.avgUnforcedErrorsPerGame.toFixed(2)}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.aces}</td>
+                      <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.serviceWinners}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.doubleFaults}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.winners}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.unforcedErrors}</td>

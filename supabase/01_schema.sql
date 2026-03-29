@@ -51,7 +51,7 @@ create table if not exists public.points (
   server_id uuid references public.players (id),
   action_player_id uuid references public.players (id),
   point_winner_team text check (point_winner_team in ('teamA', 'teamB')),
-  ending_type text check (ending_type in ('Winner', 'Unforced Error', 'Forced Error', 'Ace', 'Double Fault')),
+  ending_type text check (ending_type in ('Winner', 'Unforced Error', 'Forced Error', 'Ace', 'Service Winner', 'Double Fault')),
   stroke_type text,
   is_break_point boolean not null default false,
   is_match_point boolean not null default false,

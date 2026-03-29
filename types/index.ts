@@ -6,7 +6,13 @@ export type ScoringFormat = "best_of_3_sets" | "best_of_5_sets" | "pro_set" | "t
 
 export type MatchStatus = "scheduled" | "in_progress" | "completed" | "retired" | "cancelled";
 
-export type PointEndingType = "winner" | "unforced_error" | "forced_error" | "ace" | "double_fault";
+export type PointEndingType =
+  | "winner"
+  | "unforced_error"
+  | "forced_error"
+  | "ace"
+  | "service_winner"
+  | "double_fault";
 
 export type StrokeType = "forehand" | "backhand" | "volley" | "overhead" | "serve" | "return";
 

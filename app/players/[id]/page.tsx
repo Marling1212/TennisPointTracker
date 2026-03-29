@@ -37,7 +37,7 @@ type PointRow = {
   server_id: string | null;
   action_player_id: string | null;
   point_winner_team: "teamA" | "teamB" | null;
-  ending_type: "Winner" | "Unforced Error" | "Forced Error" | "Ace" | "Double Fault" | null;
+  ending_type: "Winner" | "Unforced Error" | "Forced Error" | "Ace" | "Service Winner" | "Double Fault" | null;
   created_at: string;
 };
 
@@ -192,6 +192,7 @@ export default function PlayerCardPage() {
     let winners = 0;
     let unforcedErrors = 0;
     let aces = 0;
+    let serviceWinners = 0;
     let doubleFaults = 0;
 
     for (const match of filteredMatches) {
@@ -232,6 +233,7 @@ export default function PlayerCardPage() {
       if (point.ending_type === "Winner" && isPointAttributedToPlayer(attr, playerId)) winners += 1;
       if (point.ending_type === "Unforced Error" && isPointAttributedToPlayer(attr, playerId)) unforcedErrors += 1;
       if (point.ending_type === "Ace" && point.server_id === playerId) aces += 1;
+      if (point.ending_type === "Service Winner" && point.server_id === playerId) serviceWinners += 1;
       if (point.ending_type === "Double Fault" && point.server_id === playerId) doubleFaults += 1;
     }
 
@@ -248,6 +250,7 @@ export default function PlayerCardPage() {
       unforcedErrors,
       aggressionRatio,
       aces,
+      serviceWinners,
       doubleFaults,
       wins,
       losses,
@@ -326,7 +329,7 @@ export default function PlayerCardPage() {
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-3 gap-3">
+        <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
             <p className="text-xs uppercase tracking-wide text-slate-400">Aggression Ratio</p>
             <p className="mt-2 text-3xl font-black text-white">{analytics.aggressionRatio.toFixed(2)}</p>
@@ -337,6 +340,10 @@ export default function PlayerCardPage() {
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
             <p className="text-xs uppercase tracking-wide text-slate-400">Total Aces</p>
             <p className="mt-2 text-3xl font-black text-white">{analytics.aces}</p>
+          </div>
+          <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
+            <p className="text-xs uppercase tracking-wide text-slate-400">Service winners</p>
+            <p className="mt-2 text-3xl font-black text-white">{analytics.serviceWinners}</p>
           </div>
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
             <p className="text-xs uppercase tracking-wide text-slate-400">Double Faults</p>

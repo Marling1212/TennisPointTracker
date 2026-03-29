@@ -51,6 +51,7 @@ export default function NewMatchPage() {
   const startMatchInFlightRef = useRef(false);
   const [isStartingMatch, setIsStartingMatch] = useState(false);
   const [isSavingPast, setIsSavingPast] = useState(false);
+  const [streamUrl, setStreamUrl] = useState("");
 
   const unlockStartMatch = () => {
     startMatchInFlightRef.current = false;
@@ -290,6 +291,7 @@ export default function NewMatchPage() {
           scoring_type: scoringType,
           sets_format: setsFormat,
           spectator_public: true,
+          stream_url: streamUrl.trim() || null,
           setup_json: minimalSetup,
         })
         .select("id")
@@ -366,6 +368,7 @@ export default function NewMatchPage() {
           scoring_type: scoringType,
           sets_format: setsFormat,
           spectator_public: true,
+          stream_url: streamUrl.trim() || null,
           setup_json: payload,
         })
         .select("id")
@@ -718,6 +721,25 @@ export default function NewMatchPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {isTeamsReady && (
+          <div className="mt-6">
+            <label htmlFor="stream-url" className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Facebook Live Stream URL <span className="font-normal normal-case text-slate-400">(optional)</span>
+            </label>
+            <input
+              id="stream-url"
+              type="url"
+              inputMode="url"
+              autoComplete="off"
+              placeholder="https://www.facebook.com/..."
+              value={streamUrl}
+              onChange={(e) => setStreamUrl(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+            />
+            <p className="mt-1 text-xs text-slate-500">Shown on the public spectator page with the live score.</p>
           </div>
         )}
 

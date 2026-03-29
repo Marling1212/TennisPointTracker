@@ -14,7 +14,11 @@ export function isPointAttributedToPlayer(
 ): boolean {
   if (pt.action_player_id === playerId) return true;
   if (pt.action_player_id) return false;
-  if (pt.server_id === playerId && (pt.ending_type === "Ace" || pt.ending_type === "Double Fault")) return true;
+  if (
+    pt.server_id === playerId &&
+    (pt.ending_type === "Ace" || pt.ending_type === "Service Winner" || pt.ending_type === "Double Fault")
+  )
+    return true;
   return false;
 }
 
@@ -70,7 +74,7 @@ export function aggregateStrokeBreakdown(
     const bucket: StrokeCategory = stroke ?? "Other";
     const row = byStroke.get(bucket)!;
     const et = pt.ending_type;
-    if (et === "Winner" || et === "Ace") row.winners += 1;
+    if (et === "Winner" || et === "Ace" || et === "Service Winner") row.winners += 1;
     else if (et === "Unforced Error") row.unforcedErrors += 1;
     else if (et === "Forced Error") row.forcedErrors += 1;
   }
@@ -163,7 +167,7 @@ export function netVsBaselineWins(
   for (const pt of points) {
     if (!isPointAttributedToPlayer(pt, playerId)) continue;
     const et = pt.ending_type;
-    if (et !== "Winner" && et !== "Ace") continue;
+    if (et !== "Winner" && et !== "Ace" && et !== "Service Winner") continue;
     const stroke = normalizeStrokeType(pt.stroke_type);
     if (!stroke) continue;
     if (stroke === "Volley" || stroke === "Overhead") net += 1;

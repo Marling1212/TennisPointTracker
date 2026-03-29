@@ -25,7 +25,7 @@ type PointRow = {
   id: string;
   created_at?: string | null;
   point_winner_team: "teamA" | "teamB" | null;
-  ending_type: "Winner" | "Unforced Error" | "Forced Error" | "Ace" | "Double Fault" | null;
+  ending_type: "Winner" | "Unforced Error" | "Forced Error" | "Ace" | "Service Winner" | "Double Fault" | null;
   server_id: string | null;
   action_player_id: string | null;
   is_break_point?: boolean | null;
@@ -42,7 +42,14 @@ type PlayerProfile = {
   nickname: string | null;
 };
 
-type StatKey = "totalPointsWon" | "winners" | "unforcedErrors" | "forcedErrors" | "aces" | "doubleFaults";
+type StatKey =
+  | "totalPointsWon"
+  | "winners"
+  | "unforcedErrors"
+  | "forcedErrors"
+  | "aces"
+  | "serviceWinners"
+  | "doubleFaults";
 
 type TeamStats = Record<StatKey, number>;
 
@@ -52,6 +59,7 @@ const defaultStats: TeamStats = {
   unforcedErrors: 0,
   forcedErrors: 0,
   aces: 0,
+  serviceWinners: 0,
   doubleFaults: 0,
 };
 
@@ -64,6 +72,7 @@ type TeamSplitStats = {
   unforcedErrors: SplitStat;
   forcedErrors: SplitStat;
   aces: SplitStat;
+  serviceWinners: SplitStat;
   doubleFaults: SplitStat;
 };
 
@@ -74,6 +83,7 @@ const defaultTeamSplit: TeamSplitStats = {
   unforcedErrors: { ...defaultSplit },
   forcedErrors: { ...defaultSplit },
   aces: { ...defaultSplit },
+  serviceWinners: { ...defaultSplit },
   doubleFaults: { ...defaultSplit },
 };
 
@@ -168,12 +178,12 @@ function buildDoublesLineup(
     const et = pt.ending_type;
     if (!wt || !et) continue;
     let actionTeam: "teamA" | "teamB" | null = null;
-    if (et === "Winner" || et === "Ace") actionTeam = wt;
+    if (et === "Winner" || et === "Ace" || et === "Service Winner") actionTeam = wt;
     else if (et === "Unforced Error" || et === "Forced Error" || et === "Double Fault") actionTeam = wt === "teamA" ? "teamB" : "teamA";
 
     if (actionTeam !== tid) continue;
     if (pt.action_player_id && !pt.action_player_id.startsWith("team-")) inferredIds.add(pt.action_player_id);
-    if (et === "Ace" || et === "Double Fault") {
+    if (et === "Ace" || et === "Service Winner" || et === "Double Fault") {
       if (pt.server_id && !pt.server_id.startsWith("team-")) inferredIds.add(pt.server_id);
     }
   }
@@ -215,7 +225,7 @@ function buildDoublesLineup(
 function countStatForPlayer(
   points: PointRow[],
   playerId: string | null,
-  kind: "winner" | "ace" | "unforced" | "forced" | "df",
+  kind: "winner" | "ace" | "serviceWinner" | "unforced" | "forced" | "df",
   creditedTeam: "teamA" | "teamB",
 ): number {
   if (!playerId) return 0;
@@ -227,6 +237,8 @@ function countStatForPlayer(
       if (pt.ending_type === "Winner" && wt === creditedTeam) return acc + 1;
     } else if (kind === "ace") {
       if (pt.ending_type === "Ace" && wt === creditedTeam) return acc + 1;
+    } else if (kind === "serviceWinner") {
+      if (pt.ending_type === "Service Winner" && wt === creditedTeam) return acc + 1;
     } else if (kind === "unforced") {
       if (pt.ending_type === "Unforced Error" && wt !== creditedTeam) return acc + 1;
     } else if (kind === "forced") {
@@ -251,6 +263,10 @@ function computeTeamSplit(points: PointRow[], lineup: LineupSlot[], side: "teamA
       p1: countStatForPlayer(points, id1, "ace", team),
       p2: countStatForPlayer(points, id2, "ace", team),
     },
+    serviceWinners: {
+      p1: countStatForPlayer(points, id1, "serviceWinner", team),
+      p2: countStatForPlayer(points, id2, "serviceWinner", team),
+    },
     unforcedErrors: {
       p1: countStatForPlayer(points, id1, "unforced", team),
       p2: countStatForPlayer(points, id2, "unforced", team),
@@ -270,7 +286,14 @@ function splitSum(s: SplitStat): number {
   return s.p1 + s.p2;
 }
 
-const splitKeys: Array<keyof TeamSplitStats> = ["winners", "unforcedErrors", "forcedErrors", "aces", "doubleFaults"];
+const splitKeys: Array<keyof TeamSplitStats> = [
+  "winners",
+  "unforcedErrors",
+  "forcedErrors",
+  "aces",
+  "serviceWinners",
+  "doubleFaults",
+];
 
 function pressureOpportunityStats(points: PointRow[]) {
   let oppA = 0;
@@ -470,6 +493,8 @@ export default function MatchStatsPage() {
 
       if (point.ending_type === "Ace" && point.point_winner_team === "teamA") teamA.aces += 1;
       if (point.ending_type === "Ace" && point.point_winner_team === "teamB") teamB.aces += 1;
+      if (point.ending_type === "Service Winner" && point.point_winner_team === "teamA") teamA.serviceWinners += 1;
+      if (point.ending_type === "Service Winner" && point.point_winner_team === "teamB") teamB.serviceWinners += 1;
       if (point.ending_type === "Winner" && point.point_winner_team === "teamA") teamA.winners += 1;
       if (point.ending_type === "Winner" && point.point_winner_team === "teamB") teamB.winners += 1;
 
@@ -544,6 +569,7 @@ export default function MatchStatsPage() {
     { key: "unforcedErrors", label: "Unforced Errors" },
     { key: "forcedErrors", label: "Forced Errors" },
     { key: "aces", label: "Aces" },
+    { key: "serviceWinners", label: "Service winners" },
     { key: "doubleFaults", label: "Double Faults" },
   ];
 
