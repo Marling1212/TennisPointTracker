@@ -18,6 +18,7 @@ type MatchLiveRow = {
   team_b_name: string | null;
   status: string | null;
   score_summary: string | null;
+  winning_team: "teamA" | "teamB" | null;
   scoring_type: "Standard" | "No-Ad" | null;
   sets_format: "1 Set" | "Best of 3 Sets" | "Tiebreak Only" | null;
   spectator_public: boolean;
@@ -39,23 +40,27 @@ function BroadcastScoreboard({
   servingTeam: "teamA" | "teamB" | null;
 }) {
   const row = (name: string, teamKey: "teamA" | "teamB") => (
-    <div className="flex items-center justify-between border-b border-white/20 py-4 last:border-b-0 md:py-6">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
+    <div className="flex items-start justify-between gap-3 border-b border-white/20 py-3 last:border-b-0 sm:items-center sm:py-4 md:py-6">
+      <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center sm:gap-3">
         {servingTeam === teamKey && (
-          <span className="shrink-0 text-3xl md:text-4xl" aria-hidden>
+          <span className="mt-0.5 shrink-0 text-2xl sm:mt-0 sm:text-3xl md:text-4xl" aria-hidden>
             🎾
           </span>
         )}
-        <span className="truncate text-2xl font-black uppercase tracking-tight text-white md:text-4xl">{name}</span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xl font-bold leading-snug tracking-tight text-white break-words whitespace-normal sm:text-2xl md:text-3xl">
+            {name}
+          </p>
+        </div>
       </div>
-      <div className="flex shrink-0 items-center gap-4 md:gap-10">
-        <span className="w-12 text-center text-4xl font-black tabular-nums text-amber-300 md:w-16 md:text-6xl">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-4 md:gap-8">
+        <span className="w-9 text-center text-3xl font-black tabular-nums text-amber-300 sm:w-11 md:w-14 md:text-5xl">
           {scoreState.sets[teamKey]}
         </span>
-        <span className="w-12 text-center text-4xl font-black tabular-nums text-white md:w-16 md:text-6xl">
+        <span className="w-9 text-center text-3xl font-black tabular-nums text-white sm:w-11 md:w-14 md:text-5xl">
           {scoreState.games[teamKey]}
         </span>
-        <span className="min-w-[4rem] text-center text-5xl font-black tabular-nums text-white md:min-w-[5rem] md:text-7xl">
+        <span className="min-w-[3.25rem] text-center text-5xl font-black tabular-nums text-white sm:min-w-[4rem] sm:text-6xl md:min-w-[5rem] md:text-6xl">
           {formatPointCell(scoreState.points[teamKey])}
         </span>
       </div>
@@ -67,16 +72,16 @@ function BroadcastScoreboard({
       {scoreState.isTiebreak && (
         <p className="mb-4 text-center text-lg font-black uppercase tracking-widest text-amber-300 md:text-2xl">Tiebreak</p>
       )}
-      <div className="mb-6 grid grid-cols-[1fr_auto_auto_auto] gap-4 border-b-2 border-white/40 pb-2 text-sm font-bold uppercase tracking-widest text-white/70 md:text-base">
+      <div className="mb-4 grid grid-cols-[1fr_auto_auto_auto] gap-2 border-b-2 border-white/40 pb-2 text-xs font-bold uppercase tracking-widest text-white/70 sm:mb-6 sm:gap-4 sm:text-sm md:text-base">
         <span />
-        <span className="w-12 text-center md:w-16">Sets</span>
-        <span className="w-12 text-center md:w-16">Games</span>
-        <span className="min-w-[4rem] text-center md:min-w-[5rem]">Pts</span>
+        <span className="w-9 text-center sm:w-11 md:w-14">Sets</span>
+        <span className="w-9 text-center sm:w-11 md:w-14">Games</span>
+        <span className="min-w-[3.25rem] text-center sm:min-w-[4rem] md:min-w-[5rem]">Pts</span>
       </div>
       {row(teamAName, "teamA")}
       {row(teamBName, "teamB")}
       {servingTeam && (
-        <p className="mt-6 text-center text-lg font-bold text-amber-200 md:text-xl">
+        <p className="mt-6 text-center text-base font-bold leading-snug text-amber-200 break-words md:text-xl">
           Serving: {servingTeam === "teamA" ? teamAName : teamBName}
         </p>
       )}
@@ -92,6 +97,7 @@ export default function SpectatorLivePage() {
   const [points, setPoints] = useState<SpectatorPoint[]>([]);
   const [loadError, setLoadError] = useState("");
   const [ready, setReady] = useState(false);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   const rules: MatchRules = useMemo(() => {
     return {
@@ -159,7 +165,9 @@ export default function SpectatorLivePage() {
 
       const { data: matchData, error: matchErr } = await client
         .from("matches")
-        .select("id, team_a_name, team_b_name, status, score_summary, scoring_type, sets_format, spectator_public")
+        .select(
+          "id, team_a_name, team_b_name, status, score_summary, winning_team, scoring_type, sets_format, spectator_public",
+        )
         .eq("id", matchId)
         .maybeSingle();
 
@@ -172,9 +180,12 @@ export default function SpectatorLivePage() {
 
       const row = matchData as MatchLiveRow & { spectator_public?: boolean | null };
       const isPublic = row.spectator_public !== false;
+      const winningTeam =
+        row.winning_team === "teamA" || row.winning_team === "teamB" ? row.winning_team : null;
       setMatch({
         ...row,
         spectator_public: isPublic,
+        winning_team: winningTeam,
       });
 
       if (!isPublic) {
@@ -234,6 +245,10 @@ export default function SpectatorLivePage() {
                     ...prev,
                     status: row.status ?? prev.status,
                     score_summary: row.score_summary ?? prev.score_summary,
+                    winning_team:
+                      row.winning_team === "teamA" || row.winning_team === "teamB"
+                        ? row.winning_team
+                        : prev.winning_team,
                     team_a_name: row.team_a_name ?? prev.team_a_name,
                     team_b_name: row.team_b_name ?? prev.team_b_name,
                     spectator_public: row.spectator_public !== undefined && row.spectator_public !== null
@@ -254,6 +269,39 @@ export default function SpectatorLivePage() {
       void client.removeChannel(channel);
     };
   }, [matchId, mergePoint, ready, match?.spectator_public]);
+
+  /** Keep screen awake while viewing a live (in-progress) public match. */
+  useEffect(() => {
+    if (!ready || !match || match.spectator_public === false) return;
+    if (match.status === "Completed") return;
+
+    const requestLock = async () => {
+      try {
+        if (typeof navigator === "undefined" || !("wakeLock" in navigator)) return;
+        if (document.visibilityState !== "visible") return;
+        const prev = wakeLockRef.current;
+        if (prev && !prev.released) await prev.release();
+        wakeLockRef.current = null;
+        wakeLockRef.current = await navigator.wakeLock.request("screen");
+      } catch {
+        wakeLockRef.current = null;
+      }
+    };
+
+    void requestLock();
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void requestLock();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      const s = wakeLockRef.current;
+      wakeLockRef.current = null;
+      if (s && !s.released) void s.release();
+    };
+  }, [ready, match]);
 
   if (!hasSupabaseEnv || !supabase) {
     return (
@@ -304,11 +352,49 @@ export default function SpectatorLivePage() {
       </div>
 
       {completed ? (
-        <div className="mb-10 w-full max-w-3xl rounded-2xl border-4 border-emerald-500/50 bg-emerald-950/40 px-6 py-8 text-center">
+        <div className="mb-10 w-full max-w-3xl rounded-2xl border-4 border-emerald-500/50 bg-emerald-950/40 px-4 py-8 text-center sm:px-6">
           <p className="text-sm font-bold uppercase tracking-widest text-emerald-300">Match complete</p>
-          {match.score_summary?.trim() ? (
-            <p className="mt-4 text-4xl font-black tabular-nums text-white md:text-6xl">{match.score_summary.trim()}</p>
-          ) : null}
+
+          <div className="mt-6 flex flex-col items-stretch gap-4 sm:items-center">
+            <div className="flex flex-col items-center gap-3 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-x-6 sm:gap-y-2">
+              <div
+                className={`max-w-full px-2 text-center text-lg font-bold leading-snug break-words text-white sm:text-xl md:text-2xl ${
+                  match.winning_team === "teamA"
+                    ? "rounded-2xl bg-emerald-500/30 px-4 py-3 ring-2 ring-emerald-400/90"
+                    : ""
+                }`}
+              >
+                <span className="align-middle">{teamAName}</span>
+                {match.winning_team === "teamA" ? (
+                  <span className="ml-2 inline-flex align-middle rounded-full bg-emerald-400 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-950 sm:text-xs">
+                    Winner
+                  </span>
+                ) : null}
+              </div>
+              <span className="text-lg font-bold text-white/50 sm:text-xl">vs</span>
+              <div
+                className={`max-w-full px-2 text-center text-lg font-bold leading-snug break-words text-white sm:text-xl md:text-2xl ${
+                  match.winning_team === "teamB"
+                    ? "rounded-2xl bg-emerald-500/30 px-4 py-3 ring-2 ring-emerald-400/90"
+                    : ""
+                }`}
+              >
+                <span className="align-middle">{teamBName}</span>
+                {match.winning_team === "teamB" ? (
+                  <span className="ml-2 inline-flex align-middle rounded-full bg-emerald-400 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-950 sm:text-xs">
+                    Winner
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            {match.score_summary?.trim() ? (
+              <p className="mt-2 text-3xl font-black tabular-nums tracking-tight text-white sm:text-4xl md:text-5xl">
+                {match.score_summary.trim()}
+              </p>
+            ) : null}
+          </div>
+
           <Link
             href={`/match/${match.id}/stats`}
             className="mt-8 inline-flex items-center justify-center rounded-xl border-2 border-white bg-white px-8 py-4 text-lg font-black text-black shadow-lg hover:bg-amber-100"
