@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Scoreboard from "@/components/Scoreboard";
 import {
   calculateNextScore,
+  formatStartScoreForPointLog,
   getCompletedSetScoreLine,
   isBreakPointBeforePoint,
   matchPointTeamsBeforePoint,
@@ -447,6 +448,7 @@ function createReducer(config: MatchConfig) {
 
 const baseActionButton = "w-full rounded-xl px-4 py-4 text-base font-extrabold shadow-md active:translate-y-px active:shadow-sm";
 const serveButton = `${baseActionButton} border-2 border-slate-200 bg-blue-700 text-white`;
+const firstServeFaultButton = `${baseActionButton} border-2 border-amber-100 bg-amber-600 text-white ring-2 ring-amber-300/80 shadow-[0_0_12px_rgba(251,191,36,0.45)]`;
 const winnerButton = `${baseActionButton} border-2 border-emerald-200 bg-emerald-600 text-white`;
 const unforcedErrorButton = `${baseActionButton} border-2 border-red-200 bg-red-600 text-white`;
 const forcedErrorButton = `${baseActionButton} border-2 border-orange-200 bg-orange-500 text-white`;
@@ -492,6 +494,8 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
   const [isInitializing, setIsInitializing] = useState(() =>
     Boolean(matchId && matchStatus !== "Completed"),
   );
+  /** False after a 1st-serve fault until the point is logged; used for `is_first_serve` in DB. */
+  const [isFirstServe, setIsFirstServe] = useState(true);
   const hasTriggeredFinishRef = useRef(false);
 
   const getDisplayPlayerName = (player: CourtPlayer): string =>
@@ -600,6 +604,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
           knownServers: hydrated.knownServers,
         },
       });
+      setIsFirstServe(true);
       setIsInitializing(false);
     };
 
@@ -658,6 +663,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
       actionPlayerId: string | null,
       isBreakPoint: boolean,
       matchPointTeams: { teamA: boolean; teamB: boolean },
+      logCtx: { isFirstServe: boolean; startScore: string },
     ) => {
       if (!matchId || !supabase || !hasSupabaseEnv) return;
       const serverIdForDb = isDatabasePlayerUuid(state.present.currentServerId)
@@ -666,6 +672,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
       const serving_team: "teamA" | "teamB" =
         state.present.currentServerSide === "A" ? "teamA" : "teamB";
       const isMatchPoint = matchPointTeams.teamA || matchPointTeams.teamB;
+      const isFirstServeDb = endingType === "Double Fault" ? false : logCtx.isFirstServe;
       const { error } = await supabase.from("points").insert({
         match_id: matchId,
         server_id: serverIdForDb,
@@ -678,6 +685,8 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
         match_point_team_a: matchPointTeams.teamA,
         match_point_team_b: matchPointTeams.teamB,
         serving_team,
+        is_first_serve: isFirstServeDb,
+        start_score: logCtx.startScore,
       });
       if (error) {
         throw new Error(error.message);
@@ -694,17 +703,23 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
     const isNoAd = config.scoringType === "No-Ad";
     const isBp = isBreakPointBeforePoint(state.present.scoreState, state.present.currentServerSide, isNoAd);
     const mpTeams = matchPointTeamsBeforePoint(state.present.scoreState, isNoAd, config.setsFormat);
+    const startScore = formatStartScoreForPointLog(state.present.scoreState);
     try {
-      await logPointToDatabase(winner, "Ace", null, state.present.currentServerId, isBp, mpTeams);
+      await logPointToDatabase(winner, "Ace", null, state.present.currentServerId, isBp, mpTeams, {
+        isFirstServe,
+        startScore,
+      });
     } catch (error) {
       setPointSaveError(error instanceof Error ? error.message : "Failed to save point.");
     } finally {
       dispatch({ type: "ACE" });
+      setIsFirstServe(true);
       setIsSavingPoint(false);
     }
   }, [
     config.scoringType,
     config.setsFormat,
+    isFirstServe,
     isInputDisabled,
     isSavingPoint,
     logPointToDatabase,
@@ -721,12 +736,17 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
     const isNoAd = config.scoringType === "No-Ad";
     const isBp = isBreakPointBeforePoint(state.present.scoreState, state.present.currentServerSide, isNoAd);
     const mpTeams = matchPointTeamsBeforePoint(state.present.scoreState, isNoAd, config.setsFormat);
+    const startScore = formatStartScoreForPointLog(state.present.scoreState);
     try {
-      await logPointToDatabase(winner, "Double Fault", null, state.present.currentServerId, isBp, mpTeams);
+      await logPointToDatabase(winner, "Double Fault", null, state.present.currentServerId, isBp, mpTeams, {
+        isFirstServe: false,
+        startScore,
+      });
     } catch (error) {
       setPointSaveError(error instanceof Error ? error.message : "Failed to save point.");
     } finally {
       dispatch({ type: "DOUBLE_FAULT" });
+      setIsFirstServe(true);
       setIsSavingPoint(false);
     }
   }, [
@@ -753,18 +773,24 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
       const isNoAd = config.scoringType === "No-Ad";
       const isBp = isBreakPointBeforePoint(state.present.scoreState, state.present.currentServerSide, isNoAd);
       const mpTeams = matchPointTeamsBeforePoint(state.present.scoreState, isNoAd, config.setsFormat);
+      const startScore = formatStartScoreForPointLog(state.present.scoreState);
       try {
-        await logPointToDatabase(winner, draftOutcome, stroke, state.present.draft.actionPlayerId ?? null, isBp, mpTeams);
+        await logPointToDatabase(winner, draftOutcome, stroke, state.present.draft.actionPlayerId ?? null, isBp, mpTeams, {
+          isFirstServe,
+          startScore,
+        });
       } catch (error) {
         setPointSaveError(error instanceof Error ? error.message : "Failed to save point.");
       } finally {
         dispatch({ type: "SET_STROKE", stroke });
+        setIsFirstServe(true);
         setIsSavingPoint(false);
       }
     },
     [
       config.scoringType,
       config.setsFormat,
+      isFirstServe,
       isInputDisabled,
       isSavingPoint,
       logPointToDatabase,
@@ -945,9 +971,19 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                 <button type="button" className={serveButton} onClick={() => dispatch({ type: "FIRST_SERVE_IN" })} disabled={isInputDisabled}>
                   1st Serve IN
                 </button>
-                <button type="button" className={serveButton} onClick={() => dispatch({ type: "FAULT" })} disabled={isInputDisabled}>
-                  FAULT
-                </button>
+                {isFirstServe && (
+                  <button
+                    type="button"
+                    className={firstServeFaultButton}
+                    onClick={() => {
+                      setIsFirstServe(false);
+                      dispatch({ type: "FAULT" });
+                    }}
+                    disabled={isInputDisabled}
+                  >
+                    1st Serve FAULT
+                  </button>
+                )}
                 <button type="button" className={serveButton} onClick={() => void handleAce()} disabled={isInputDisabled}>
                   ACE
                 </button>
@@ -1056,9 +1092,19 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                 <button type="button" className={serveButton} onClick={() => dispatch({ type: "FIRST_SERVE_IN" })} disabled={isInputDisabled}>
                   1st Serve IN
                 </button>
-                <button type="button" className={serveButton} onClick={() => dispatch({ type: "FAULT" })} disabled={isInputDisabled}>
-                  FAULT
-                </button>
+                {isFirstServe && (
+                  <button
+                    type="button"
+                    className={firstServeFaultButton}
+                    onClick={() => {
+                      setIsFirstServe(false);
+                      dispatch({ type: "FAULT" });
+                    }}
+                    disabled={isInputDisabled}
+                  >
+                    1st Serve FAULT
+                  </button>
+                )}
                 <button type="button" className={serveButton} onClick={() => void handleAce()} disabled={isInputDisabled}>
                   ACE
                 </button>
@@ -1148,7 +1194,10 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
       <button
         type="button"
         className="absolute bottom-2 left-1/2 z-10 w-36 -translate-x-1/2 rounded-xl border-2 border-red-200 bg-red-600 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
-        onClick={() => dispatch({ type: "UNDO" })}
+        onClick={() => {
+          dispatch({ type: "UNDO" });
+          setIsFirstServe(true);
+        }}
         disabled={state.history.length === 0 || isInputDisabled}
       >
         Undo

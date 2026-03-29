@@ -262,3 +262,9 @@ export function calculateNextScore(
     isMatchOver: false,
   };
 }
+
+/** Game or tiebreak point score at rally start (e.g. "30-30", "40-Ad", "6-5") for analytics. */
+export function formatStartScoreForPointLog(state: ScoreState): string {
+  const fmt = (v: number | string) => (v === "Ad" ? "Ad" : String(v));
+  return `${fmt(state.points.teamA)}-${fmt(state.points.teamB)}`;
+}

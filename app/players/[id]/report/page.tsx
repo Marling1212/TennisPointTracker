@@ -14,6 +14,7 @@ import {
   weaponVsLiability,
   type StrokeEndingRow,
 } from "@/utils/playerScoutingAggregation";
+import { computeCrunchTimeStats, computeServeStatsForServer } from "@/utils/serveAndCrunchStats";
 
 type PlayerRow = {
   id: string;
@@ -44,6 +45,8 @@ type PointRow = {
   point_winner_team: "teamA" | "teamB" | null;
   is_break_point: boolean | null;
   serving_team: "teamA" | "teamB" | null;
+  is_first_serve: boolean | null;
+  start_score: string | null;
 };
 
 type MatchTypeFilter = "all" | "singles" | "doubles";
@@ -112,6 +115,23 @@ function NetBaselineBar({ net, baseline }: { net: number; baseline: number }) {
           Baseline (FH + BH): <strong>{baseline}</strong> winner/ace shots
         </span>
       </div>
+    </div>
+  );
+}
+
+function ServeDonut({ label, value, color }: { label: string; value: number | null; color: string }) {
+  const v = value === null ? 0 : Math.min(100, Math.max(0, value));
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div
+        className="flex h-28 w-28 items-center justify-center rounded-full print:opacity-100"
+        style={{ background: `conic-gradient(${color} ${v}%, #e2e8f0 0)` }}
+      >
+        <div className="flex h-[4.25rem] w-[4.25rem] items-center justify-center rounded-full bg-white shadow-inner print:bg-white">
+          <span className="text-lg font-black text-slate-900">{value === null ? "—" : `${value.toFixed(0)}%`}</span>
+        </div>
+      </div>
+      <p className="max-w-[10rem] text-center text-[11px] font-semibold leading-snug text-slate-700">{label}</p>
     </div>
   );
 }
@@ -210,7 +230,7 @@ export default function PlayerScoutingReportPage() {
       const { data: pointsData, error: pointsError } = await supabase
         .from("points")
         .select(
-          "id, match_id, action_player_id, server_id, stroke_type, ending_type, point_winner_team, is_break_point, serving_team",
+          "id, match_id, action_player_id, server_id, stroke_type, ending_type, point_winner_team, is_break_point, serving_team, is_first_serve, start_score",
         )
         .in("match_id", trackedIds)
         .order("created_at", { ascending: true });
@@ -298,6 +318,16 @@ export default function PlayerScoutingReportPage() {
   const netBase = useMemo(
     () => netVsBaselineWins(filteredPoints, playerId),
     [filteredPoints, playerId],
+  );
+
+  const serveStats = useMemo(
+    () => computeServeStatsForServer(filteredPoints, playerId),
+    [filteredPoints, playerId],
+  );
+
+  const crunchStats = useMemo(
+    () => computeCrunchTimeStats(filteredPoints, playerSideByMatchId),
+    [filteredPoints, playerSideByMatchId],
   );
 
   const displayName = player ? `${player.first_name} ${player.last_name}`.trim() : "Player";
@@ -456,6 +486,27 @@ export default function PlayerScoutingReportPage() {
           </div>
         </section>
 
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:block print:border-slate-300 print:shadow-none">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Service performance</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Points where you are the recorded server. 1st-serve share uses completed points with{" "}
+            <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">is_first_serve</code> set (new matches).
+          </p>
+          <p className="mt-2 text-xs text-slate-600">
+            Serve points in sample: <strong>{serveStats.totalServed}</strong> · On first serve:{" "}
+            <strong>{serveStats.firstServePoints}</strong> · On second serve: <strong>{serveStats.secondServePoints}</strong>
+          </p>
+          <div className="mt-6 grid grid-cols-1 gap-8 sm:grid-cols-3 print:max-w-none">
+            <ServeDonut
+              label="1st serve in % (of your serve points)"
+              value={serveStats.firstServeInPct}
+              color="#4f46e5"
+            />
+            <ServeDonut label="1st serve win %" value={serveStats.firstServeWinPct} color="#059669" />
+            <ServeDonut label="2nd serve win %" value={serveStats.secondServeWinPct} color="#0ea5e9" />
+          </div>
+        </section>
+
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:border-slate-300 print:shadow-none">
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Clutch (break points)</h2>
           <p className="mt-1 text-xs text-slate-500">
@@ -486,6 +537,41 @@ export default function PlayerScoutingReportPage() {
               <p className="mt-1 text-xs text-slate-500">
                 {clutch.serveOpps} break point{clutch.serveOpps === 1 ? "" : "s"} faced when serving
               </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:block print:border-slate-300 print:shadow-none">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
+              Pressure situations (Crunch time)
+            </h2>
+            {crunchStats.winPct !== null && crunchStats.total > 0 && crunchStats.winPct > 55 && (
+              <span className="rounded-full bg-orange-100 px-3 py-1.5 text-xs font-bold text-orange-900 print:bg-orange-50">
+                🔥 Clutch Performer
+              </span>
+            )}
+            {crunchStats.winPct !== null && crunchStats.total > 0 && crunchStats.winPct < 45 && (
+              <span className="rounded-full bg-sky-100 px-3 py-1.5 text-xs font-bold text-sky-900 print:bg-sky-50">
+                🧊 Needs Focus
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Points at 30-30, 40-40, 40-Ad / Ad-40, or tiebreak scores from 4-4 onward (team wins when you are on this
+            side). Requires <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">start_score</code> on
+            logged points.
+          </p>
+          <div className="mt-6 flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:justify-center sm:gap-10">
+            <ServeDonut label="Crunch time win % (team)" value={crunchStats.winPct} color="#c026d3" />
+            <div className="text-center text-sm text-slate-600 sm:pt-8 sm:text-left">
+              <p>
+                <span className="font-bold text-slate-900">{crunchStats.wins}</span> wins /{" "}
+                <span className="font-bold text-slate-900">{crunchStats.total}</span> pressure points
+              </p>
+              {crunchStats.total === 0 && (
+                <p className="mt-2 text-xs text-amber-800">No qualifying pressure points in this sample.</p>
+              )}
             </div>
           </div>
         </section>

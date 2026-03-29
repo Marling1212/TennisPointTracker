@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
+import { playerSideInMatch } from "@/utils/playerScoutingAggregation";
 
 type PlayerRow = {
   id: string;
@@ -103,7 +104,7 @@ export default function PlayerCardPage() {
         .select(
           "id, match_type, team_a_name, team_b_name, created_at, status, winning_team, is_manual_entry",
         )
-        .or(`team_a_name.eq.${teamData.name},team_b_name.eq.${teamData.name}`)
+        .eq("team_id", teamData.id)
         .order("created_at", { ascending: false });
 
       if (matchesError) {
@@ -112,7 +113,18 @@ export default function PlayerCardPage() {
         return;
       }
 
-      const playedMatches = (matchesData ?? []) as MatchRow[];
+      const fullName = `${(playerData as PlayerRow).first_name} ${(playerData as PlayerRow).last_name}`.trim();
+      const clubName = teamData.name;
+      const playedMatches = ((matchesData ?? []) as MatchRow[]).filter((m) => {
+        const a = m.team_a_name ?? "";
+        const b = m.team_b_name ?? "";
+        return (
+          a.includes(fullName) ||
+          b.includes(fullName) ||
+          a === clubName ||
+          b === clubName
+        );
+      });
       setMatches(playedMatches);
 
       if (playedMatches.length === 0) {
@@ -171,7 +183,8 @@ export default function PlayerCardPage() {
   const analytics = useMemo(() => {
     const matchMap = new Map(filteredMatches.map((match) => [match.id, match]));
     const relevantPoints = points.filter((point) => matchMap.has(point.match_id));
-    const teamName = team?.name;
+    const clubTeamName = team?.name ?? "";
+    const fullName = player ? `${player.first_name} ${player.last_name}`.trim() : "";
 
     let wins = 0;
     let losses = 0;
@@ -181,12 +194,7 @@ export default function PlayerCardPage() {
     let doubleFaults = 0;
 
     for (const match of filteredMatches) {
-      const side =
-        match.team_a_name && teamName && match.team_a_name === teamName
-          ? "teamA"
-          : match.team_b_name && teamName && match.team_b_name === teamName
-            ? "teamB"
-            : null;
+      const side = playerSideInMatch(match.team_a_name, match.team_b_name, clubTeamName, fullName);
 
       if (!side) continue;
 
@@ -210,9 +218,8 @@ export default function PlayerCardPage() {
 
     for (const point of relevantPoints) {
       const match = matchMap.get(point.match_id);
-      if (!match || !teamName) continue;
-      const side =
-        match.team_a_name === teamName ? "teamA" : match.team_b_name === teamName ? "teamB" : null;
+      if (!match) continue;
+      const side = playerSideInMatch(match.team_a_name, match.team_b_name, clubTeamName, fullName);
       if (!side) continue;
 
       const playerWonPoint = point.point_winner_team === side;
@@ -241,7 +248,7 @@ export default function PlayerCardPage() {
       wins,
       losses,
     };
-  }, [filteredMatches, points, playerId, team]);
+  }, [filteredMatches, points, playerId, team, player]);
 
   if (isLoading) {
     return (
