@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { countGamesWonByTeam } from "@/utils/matchGameCounts";
 import type { MatchRules } from "@/utils/spectatorReplay";
+import { isPointAttributedToPlayer } from "@/utils/playerScoutingAggregation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 
 type ProfileRow = {
@@ -37,6 +38,7 @@ type PointRow = {
   id: string;
   match_id: string;
   server_id: string | null;
+  action_player_id: string | null;
   point_winner_team: "teamA" | "teamB" | null;
   ending_type: "Winner" | "Unforced Error" | "Forced Error" | "Ace" | "Double Fault" | null;
 };
@@ -252,7 +254,7 @@ export default function TeamStatsPage() {
 
       const { data: pointsData, error: pointsError } = await supabase
         .from("points")
-        .select("id, match_id, server_id, point_winner_team, ending_type")
+        .select("id, match_id, server_id, action_player_id, point_winner_team, ending_type")
         .in("match_id", pointTrackedMatchIds);
 
       if (pointsError) {
@@ -307,27 +309,15 @@ export default function TeamStatsPage() {
         const totalPointsPlayed = playerPoints.length;
         const winRate = matchesPlayed === 0 ? 0 : (matchesWon / matchesPlayed) * 100;
         const pointWinRate = totalPointsPlayed === 0 ? 0 : (pointsWon / totalPointsPlayed) * 100;
-        const isTeamAByMatchId = new Map<string, boolean>(
-          playerMatches.map((match) => [match.id, (match.team_a_name ?? "").includes(fullName)]),
-        );
-        const winners = playerPoints.filter((point) => {
-          if (point.ending_type !== "Winner") return false;
-          const isTeamA = isTeamAByMatchId.get(point.match_id);
-          const mySide = isTeamA ? "teamA" : "teamB";
-          return point.point_winner_team === mySide;
-        }).length;
-        const unforcedErrors = playerPoints.filter((point) => {
-          if (point.ending_type !== "Unforced Error") return false;
-          const isTeamA = isTeamAByMatchId.get(point.match_id);
-          const mySide = isTeamA ? "teamA" : "teamB";
-          return point.point_winner_team && point.point_winner_team !== mySide;
-        }).length;
-        const forcedErrors = playerPoints.filter((point) => {
-          if (point.ending_type !== "Forced Error") return false;
-          const isTeamA = isTeamAByMatchId.get(point.match_id);
-          const mySide = isTeamA ? "teamA" : "teamB";
-          return point.point_winner_team && point.point_winner_team !== mySide;
-        }).length;
+        const winners = playerPoints.filter(
+          (point) => point.ending_type === "Winner" && isPointAttributedToPlayer(point, player.id),
+        ).length;
+        const unforcedErrors = playerPoints.filter(
+          (point) => point.ending_type === "Unforced Error" && isPointAttributedToPlayer(point, player.id),
+        ).length;
+        const forcedErrors = playerPoints.filter(
+          (point) => point.ending_type === "Forced Error" && isPointAttributedToPlayer(point, player.id),
+        ).length;
 
         const liveMatchesPlayed = playerMatches.filter((m) => m.status === "In Progress").length;
 

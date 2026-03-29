@@ -14,7 +14,12 @@ import {
   weaponVsLiability,
   type StrokeEndingRow,
 } from "@/utils/playerScoutingAggregation";
-import { computeCrunchTimeStats, computeServeStatsForServer } from "@/utils/serveAndCrunchStats";
+import {
+  computeCrunchTimeStats,
+  computeHoldStats,
+  computeReturnStats,
+  computeServeStatsForServer,
+} from "@/utils/serveAndCrunchStats";
 
 type PlayerRow = {
   id: string;
@@ -38,6 +43,7 @@ type MatchRow = {
 type PointRow = {
   id: string;
   match_id: string;
+  created_at: string;
   action_player_id: string | null;
   server_id: string | null;
   stroke_type: string | null;
@@ -136,6 +142,49 @@ function ServeDonut({ label, value, color }: { label: string; value: number | nu
   );
 }
 
+function HoldHero({
+  holdPct,
+  gamesWon,
+  gamesPlayed,
+}: {
+  holdPct: number | null;
+  gamesWon: number;
+  gamesPlayed: number;
+}) {
+  return (
+    <div className="mb-6 rounded-2xl border-2 border-indigo-200 bg-gradient-to-b from-indigo-50 to-white p-6 text-center print:block print:border-slate-300 print:bg-white">
+      <p className="text-xs font-bold uppercase tracking-wide text-indigo-900 print:text-slate-700">Hold rate</p>
+      <p className="mt-2 text-5xl font-black tracking-tight text-indigo-950 print:text-slate-900">
+        {holdPct === null ? "—" : `${holdPct.toFixed(0)}%`}
+      </p>
+      <p className="mt-2 text-sm text-slate-600">
+        <span className="font-semibold text-slate-900">{gamesWon}</span> holds /{" "}
+        <span className="font-semibold text-slate-900">{gamesPlayed}</span> service games
+      </p>
+      <p className="mt-1 text-xs text-slate-500">Games where you served the deciding point (see methodology note below)</p>
+    </div>
+  );
+}
+
+function ReturnPctBar({ label, value, sub }: { label: string; value: number | null; sub?: string }) {
+  const v = value === null ? 0 : Math.min(100, Math.max(0, value));
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between gap-2 text-sm font-semibold text-slate-800">
+        <span>{label}</span>
+        <span>{value === null ? "—" : `${value.toFixed(1)}%`}</span>
+      </div>
+      <div className="h-4 w-full overflow-hidden rounded-full bg-slate-200 print:bg-slate-200">
+        <div
+          className="h-full rounded-full bg-violet-600 print:bg-violet-700"
+          style={{ width: `${v}%` }}
+        />
+      </div>
+      {sub ? <p className="text-xs text-slate-500">{sub}</p> : null}
+    </div>
+  );
+}
+
 export default function PlayerScoutingReportPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -230,7 +279,7 @@ export default function PlayerScoutingReportPage() {
       const { data: pointsData, error: pointsError } = await supabase
         .from("points")
         .select(
-          "id, match_id, action_player_id, server_id, stroke_type, ending_type, point_winner_team, is_break_point, serving_team, is_first_serve, start_score",
+          "id, match_id, created_at, action_player_id, server_id, stroke_type, ending_type, point_winner_team, is_break_point, serving_team, is_first_serve, start_score",
         )
         .in("match_id", trackedIds)
         .order("created_at", { ascending: true });
@@ -323,6 +372,16 @@ export default function PlayerScoutingReportPage() {
   const serveStats = useMemo(
     () => computeServeStatsForServer(filteredPoints, playerId),
     [filteredPoints, playerId],
+  );
+
+  const holdStats = useMemo(
+    () => computeHoldStats(filteredPoints, playerId, playerSideByMatchId),
+    [filteredPoints, playerId, playerSideByMatchId],
+  );
+
+  const returnStats = useMemo(
+    () => computeReturnStats(filteredPoints, playerSideByMatchId),
+    [filteredPoints, playerSideByMatchId],
   );
 
   const crunchStats = useMemo(
@@ -486,26 +545,56 @@ export default function PlayerScoutingReportPage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:block print:border-slate-300 print:shadow-none">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Service performance</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Points where you are the recorded server. 1st-serve share uses completed points with{" "}
-            <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">is_first_serve</code> set (new matches).
-          </p>
-          <p className="mt-2 text-xs text-slate-600">
-            Serve points in sample: <strong>{serveStats.totalServed}</strong> · On first serve:{" "}
-            <strong>{serveStats.firstServePoints}</strong> · On second serve: <strong>{serveStats.secondServePoints}</strong>
-          </p>
-          <div className="mt-6 grid grid-cols-1 gap-8 sm:grid-cols-3 print:max-w-none">
-            <ServeDonut
-              label="1st serve in % (of your serve points)"
-              value={serveStats.firstServeInPct}
-              color="#4f46e5"
+        <div className="grid gap-6 lg:grid-cols-2 print:grid-cols-2 print:gap-4">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:block print:border-slate-300 print:shadow-none">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Service performance</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Hold % uses game-ending points where you were <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">server_id</code> and the next point starts at{" "}
+              <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">0-0</code>, or the last point of the match.
+            </p>
+            <HoldHero
+              holdPct={holdStats.holdPct}
+              gamesWon={holdStats.serviceGamesWon}
+              gamesPlayed={holdStats.serviceGamesPlayed}
             />
-            <ServeDonut label="1st serve win %" value={serveStats.firstServeWinPct} color="#059669" />
-            <ServeDonut label="2nd serve win %" value={serveStats.secondServeWinPct} color="#0ea5e9" />
-          </div>
-        </section>
+            <p className="mb-4 text-xs text-slate-500">
+              Point-level serve stats (you as <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">server_id</code>). Requires{" "}
+              <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">is_first_serve</code> on new logs.
+            </p>
+            <p className="mb-4 text-xs text-slate-600">
+              Serve points: <strong>{serveStats.totalServed}</strong> · 1st: <strong>{serveStats.firstServePoints}</strong> · 2nd:{" "}
+              <strong>{serveStats.secondServePoints}</strong>
+            </p>
+            <div className="grid grid-cols-1 gap-8 sm:grid-cols-3 print:max-w-none">
+              <ServeDonut
+                label="1st serve in % (of your serve points)"
+                value={serveStats.firstServeInPct}
+                color="#4f46e5"
+              />
+              <ServeDonut label="1st serve win %" value={serveStats.firstServeWinPct} color="#059669" />
+              <ServeDonut label="2nd serve win %" value={serveStats.secondServeWinPct} color="#0ea5e9" />
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:block print:border-slate-300 print:shadow-none">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Return performance</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Points where the opponent is serving (<code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">serving_team</code> ≠ your side). Win % = your team won the point.
+            </p>
+            <div className="mt-6 space-y-8">
+              <ReturnPctBar
+                label="1st serve return win %"
+                value={returnStats.firstReturnWinPct}
+                sub={`${returnStats.firstReturnPoints} return points on opponent's first serve`}
+              />
+              <ReturnPctBar
+                label="2nd serve return win %"
+                value={returnStats.secondReturnWinPct}
+                sub={`${returnStats.secondReturnPoints} return points on opponent's second serve`}
+              />
+            </div>
+          </section>
+        </div>
 
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:border-slate-300 print:shadow-none">
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Clutch (break points)</h2>

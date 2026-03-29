@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
-import { playerSideInMatch } from "@/utils/playerScoutingAggregation";
+import { isPointAttributedToPlayer, playerSideInMatch } from "@/utils/playerScoutingAggregation";
 
 type PlayerRow = {
   id: string;
@@ -35,6 +35,7 @@ type PointRow = {
   id: string;
   match_id: string;
   server_id: string | null;
+  action_player_id: string | null;
   point_winner_team: "teamA" | "teamB" | null;
   ending_type: "Winner" | "Unforced Error" | "Forced Error" | "Ace" | "Double Fault" | null;
   created_at: string;
@@ -145,7 +146,7 @@ export default function PlayerCardPage() {
 
       const { data: pointsData, error: pointsError } = await supabase
         .from("points")
-        .select("id, match_id, server_id, point_winner_team, ending_type, created_at")
+        .select("id, match_id, server_id, action_player_id, point_winner_team, ending_type, created_at")
         .in("match_id", pointTrackedMatchIds)
         .order("created_at", { ascending: false });
 
@@ -222,11 +223,14 @@ export default function PlayerCardPage() {
       const side = playerSideInMatch(match.team_a_name, match.team_b_name, clubTeamName, fullName);
       if (!side) continue;
 
-      const playerWonPoint = point.point_winner_team === side;
-      const playerLostPoint = point.point_winner_team && point.point_winner_team !== side;
+      const attr = {
+        action_player_id: point.action_player_id,
+        server_id: point.server_id,
+        ending_type: point.ending_type,
+      };
 
-      if (point.ending_type === "Winner" && playerWonPoint) winners += 1;
-      if (point.ending_type === "Unforced Error" && playerLostPoint) unforcedErrors += 1;
+      if (point.ending_type === "Winner" && isPointAttributedToPlayer(attr, playerId)) winners += 1;
+      if (point.ending_type === "Unforced Error" && isPointAttributedToPlayer(attr, playerId)) unforcedErrors += 1;
       if (point.ending_type === "Ace" && point.server_id === playerId) aces += 1;
       if (point.ending_type === "Double Fault" && point.server_id === playerId) doubleFaults += 1;
     }
