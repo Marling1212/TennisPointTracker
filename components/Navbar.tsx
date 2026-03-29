@@ -11,9 +11,9 @@ const links = [
 
 export default function Navbar() {
   const pathname = usePathname();
-  const isLivePlayRoute = pathname.includes("/play");
+  const hideNav = pathname.includes("/play") || pathname.includes("/live");
 
-  if (isLivePlayRoute) {
+  if (hideNav) {
     return null;
   }
 

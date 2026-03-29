@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import type { ScoreState } from "@/utils/scoringEngine";
 import {
@@ -25,19 +25,62 @@ type MatchLiveRow = {
   spectator_public: boolean;
 };
 
-/** Full-width 16:9 landscape frame — primary focus like a pro broadcast feed. */
-function FacebookLiveEmbed({ streamUrl }: { streamUrl: string }) {
+/** 16:9 video + optional overlay; entire stage can go browser-fullscreen (not just the FB iframe). */
+function VideoStage({
+  streamUrl,
+  children,
+}: {
+  streamUrl: string;
+  children: ReactNode;
+}) {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => {
+    const onFs = () => setFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    const el = stageRef.current;
+    if (!el) return;
+    try {
+      if (!document.fullscreenElement) {
+        await el.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch {
+      /* Safari / embedded contexts may block; ignore */
+    }
+  };
+
   const src = `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(streamUrl.trim())}&show_text=false&width=auto`;
+
   return (
-    <div className="w-full print:hidden">
-      <div className="relative w-full overflow-hidden bg-black aspect-video shadow-[0_0_0_1px_rgba(255,255,255,0.08)]">
-        <iframe
-          title="Facebook Live"
-          src={src}
-          className="absolute inset-0 h-full w-full border-0"
-          allowFullScreen
-          allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-        />
+    <div
+      ref={stageRef}
+      className="relative w-full overflow-hidden bg-black aspect-video shadow-[0_0_0_1px_rgba(255,255,255,0.08)] print:hidden"
+    >
+      <iframe
+        title="Facebook Live"
+        src={src}
+        className="absolute inset-0 h-full w-full border-0"
+        allowFullScreen
+        allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+      />
+      <div className="pointer-events-none absolute inset-0 z-10">
+        {children ? (
+          <div className="absolute bottom-2 left-2 max-w-[min(92vw,17rem)] sm:bottom-3 sm:left-3">{children}</div>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => void toggleFullscreen()}
+          className="pointer-events-auto absolute bottom-2 right-2 z-20 rounded border border-white/25 bg-black/70 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-lg backdrop-blur-sm hover:bg-black/85 sm:bottom-3 sm:right-3 sm:px-3 sm:text-[11px]"
+        >
+          {fullscreen ? "Exit full screen" : "Full screen"}
+        </button>
       </div>
     </div>
   );
@@ -47,17 +90,19 @@ function formatPointCell(v: number | string): string {
   return String(v);
 }
 
-/** Lower-third style: tiny type, ticker-sized numbers — like TV/stream overlays. */
+/** `overlay`: floating bottom-left on video. `bar`: full-width strip when there is no video. */
 function CompactLiveScoreboard({
   teamAName,
   teamBName,
   scoreState,
   servingTeam,
+  variant = "bar",
 }: {
   teamAName: string;
   teamBName: string;
   scoreState: ScoreState;
   servingTeam: "teamA" | "teamB" | null;
+  variant?: "bar" | "overlay";
 }) {
   const colS = "w-5 text-center text-[10px] font-bold tabular-nums text-amber-300/95 sm:w-6 sm:text-[11px]";
   const colG = "w-5 text-center text-[10px] font-bold tabular-nums text-white sm:w-6 sm:text-[11px]";
@@ -77,26 +122,40 @@ function CompactLiveScoreboard({
     </div>
   );
 
-  return (
-    <div className="w-full bg-gradient-to-b from-zinc-950/98 to-black px-2 py-1 sm:px-3 print:block">
-      <div className="mx-auto flex max-w-6xl items-center gap-1 border-b border-white/10 pb-0.5">
+  const inner = (
+    <>
+      <div className="flex items-center gap-1 border-b border-white/10 pb-0.5">
         <span className="w-2 shrink-0" aria-hidden />
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <p className="text-[8px] font-bold uppercase tracking-[0.2em] text-white/35">Live</p>
+          <p className="text-[8px] font-bold uppercase tracking-[0.2em] text-white/50">Live</p>
           {scoreState.isTiebreak ? (
-            <span className="rounded bg-amber-500/20 px-1 py-0.5 text-[7px] font-bold uppercase text-amber-300">TB</span>
+            <span className="rounded bg-amber-500/25 px-1 py-0.5 text-[7px] font-bold uppercase text-amber-200">TB</span>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <span className="w-5 text-center text-[7px] font-semibold uppercase text-white/25 sm:w-6">S</span>
-          <span className="w-5 text-center text-[7px] font-semibold uppercase text-white/25 sm:w-6">G</span>
-          <span className="w-6 text-center text-[7px] font-semibold uppercase text-white/25 sm:w-7">Pt</span>
+          <span className="w-5 text-center text-[7px] font-semibold uppercase text-white/35 sm:w-6">S</span>
+          <span className="w-5 text-center text-[7px] font-semibold uppercase text-white/35 sm:w-6">G</span>
+          <span className="w-6 text-center text-[7px] font-semibold uppercase text-white/35 sm:w-7">Pt</span>
         </div>
       </div>
-      <div className="mx-auto max-w-6xl">
+      <div>
         {line(teamAName, "teamA")}
         {line(teamBName, "teamB")}
       </div>
+    </>
+  );
+
+  if (variant === "overlay") {
+    return (
+      <div className="pointer-events-none rounded-md border border-white/20 bg-black/80 px-2 py-1 shadow-xl backdrop-blur-md print:hidden">
+        {inner}
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full bg-gradient-to-b from-zinc-950/98 to-black px-2 py-1 sm:px-3 print:block">
+      <div className="mx-auto max-w-6xl">{inner}</div>
     </div>
   );
 }
@@ -121,6 +180,31 @@ function CompactCompletedBar({
         <span className={winningTeam === "teamB" ? "text-emerald-300" : ""}>{teamBName}</span>
       </div>
       <p className="mt-1 text-center text-[11px] font-bold tabular-nums tracking-tight text-white sm:text-xs">{scoreSummary}</p>
+    </div>
+  );
+}
+
+/** Bottom-left on video when match is complete */
+function CompactCompletedOverlay({
+  teamAName,
+  teamBName,
+  scoreSummary,
+  winningTeam,
+}: {
+  teamAName: string;
+  teamBName: string;
+  scoreSummary: string;
+  winningTeam: "teamA" | "teamB" | null;
+}) {
+  return (
+    <div className="pointer-events-none rounded-md border border-emerald-500/35 bg-black/80 px-2 py-1.5 shadow-xl backdrop-blur-md print:hidden">
+      <p className="text-[7px] font-bold uppercase tracking-[0.2em] text-emerald-400/95">Final</p>
+      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[9px] font-semibold leading-tight text-white/95">
+        <span className={`max-w-[9rem] truncate ${winningTeam === "teamA" ? "text-emerald-300" : ""}`}>{teamAName}</span>
+        <span className="text-white/40">vs</span>
+        <span className={`max-w-[9rem] truncate ${winningTeam === "teamB" ? "text-emerald-300" : ""}`}>{teamBName}</span>
+      </div>
+      <p className="mt-0.5 text-[10px] font-bold tabular-nums text-white">{scoreSummary}</p>
     </div>
   );
 }
@@ -391,9 +475,49 @@ export default function SpectatorLivePage() {
     <main className="flex min-h-screen flex-col bg-black text-white">
       <h1 className="sr-only">Live match spectator</h1>
 
-      {facebookStreamUrl ? <FacebookLiveEmbed streamUrl={facebookStreamUrl} /> : null}
-
-      {completed ? (
+      {facebookStreamUrl ? (
+        <>
+          <VideoStage streamUrl={facebookStreamUrl}>
+            {completed ? (
+              match.score_summary?.trim() ? (
+                <CompactCompletedOverlay
+                  teamAName={teamAName}
+                  teamBName={teamBName}
+                  scoreSummary={match.score_summary.trim()}
+                  winningTeam={match.winning_team}
+                />
+              ) : (
+                <div className="pointer-events-none rounded-md border border-emerald-500/30 bg-black/80 px-2 py-1.5 text-[9px] text-white/90 shadow-xl backdrop-blur-md print:hidden">
+                  <p className="text-[7px] font-bold uppercase tracking-widest text-emerald-400">Final</p>
+                  <p className="mt-0.5 font-semibold leading-tight">
+                    {teamAName} vs {teamBName}
+                  </p>
+                </div>
+              )
+            ) : (
+              <CompactLiveScoreboard
+                variant="overlay"
+                teamAName={teamAName}
+                teamBName={teamBName}
+                scoreState={scoreState}
+                servingTeam={servingTeam}
+              />
+            )}
+          </VideoStage>
+          <div className="flex flex-1 flex-col items-center justify-center px-3 py-3">
+            {completed ? (
+              <Link
+                href={`/match/${match.id}/stats`}
+                className="inline-flex items-center justify-center rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-[11px] font-bold text-white hover:bg-white/15"
+              >
+                Match stats
+              </Link>
+            ) : (
+              <p className="text-center text-[9px] text-white/35">Scores update automatically · read-only</p>
+            )}
+          </div>
+        </>
+      ) : completed ? (
         <>
           {match.score_summary?.trim() ? (
             <CompactCompletedBar
@@ -422,6 +546,7 @@ export default function SpectatorLivePage() {
       ) : (
         <>
           <CompactLiveScoreboard
+            variant="bar"
             teamAName={teamAName}
             teamBName={teamBName}
             scoreState={scoreState}
