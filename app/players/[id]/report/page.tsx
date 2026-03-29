@@ -7,7 +7,10 @@ import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import {
   aggregateStrokeBreakdown,
   clutchBreakPointRates,
+  countAttributedPoints,
+  countAttributedWithStroke,
   netVsBaselineWins,
+  playerSideInMatch,
   weaponVsLiability,
   type StrokeEndingRow,
 } from "@/utils/playerScoutingAggregation";
@@ -35,6 +38,7 @@ type PointRow = {
   id: string;
   match_id: string;
   action_player_id: string | null;
+  server_id: string | null;
   stroke_type: string | null;
   ending_type: string | null;
   point_winner_team: "teamA" | "teamB" | null;
@@ -172,7 +176,7 @@ export default function PlayerScoutingReportPage() {
       const { data: matchesData, error: matchesError } = await supabase
         .from("matches")
         .select("id, match_type, team_a_name, team_b_name, is_manual_entry")
-        .or(`team_a_name.eq.${teamData.name},team_b_name.eq.${teamData.name}`)
+        .eq("team_id", teamData.id)
         .order("created_at", { ascending: false });
 
       if (matchesError) {
@@ -181,7 +185,18 @@ export default function PlayerScoutingReportPage() {
         return;
       }
 
-      const playedMatches = (matchesData ?? []) as MatchRow[];
+      const fullName = `${(playerData as PlayerRow).first_name} ${(playerData as PlayerRow).last_name}`.trim();
+      const clubName = teamData.name;
+      const playedMatches = ((matchesData ?? []) as MatchRow[]).filter((m) => {
+        const a = m.team_a_name ?? "";
+        const b = m.team_b_name ?? "";
+        return (
+          a.includes(fullName) ||
+          b.includes(fullName) ||
+          a === clubName ||
+          b === clubName
+        );
+      });
       setMatches(playedMatches);
 
       const trackedIds = playedMatches.filter((m) => m.is_manual_entry !== true).map((m) => m.id);
@@ -195,7 +210,7 @@ export default function PlayerScoutingReportPage() {
       const { data: pointsData, error: pointsError } = await supabase
         .from("points")
         .select(
-          "id, match_id, action_player_id, stroke_type, ending_type, point_winner_team, is_break_point, serving_team",
+          "id, match_id, action_player_id, server_id, stroke_type, ending_type, point_winner_team, is_break_point, serving_team",
         )
         .in("match_id", trackedIds)
         .order("created_at", { ascending: true });
@@ -225,14 +240,16 @@ export default function PlayerScoutingReportPage() {
 
   const filteredMatchIds = useMemo(() => new Set(filteredMatches.map((m) => m.id)), [filteredMatches]);
 
+  const playerFullName = player ? `${player.first_name} ${player.last_name}`.trim() : "";
+
   const playerSideByMatchId = useMemo(() => {
     const map = new Map<string, "teamA" | "teamB">();
     for (const m of filteredMatches) {
-      if (m.team_a_name === teamName) map.set(m.id, "teamA");
-      else if (m.team_b_name === teamName) map.set(m.id, "teamB");
+      const side = playerSideInMatch(m.team_a_name, m.team_b_name, teamName, playerFullName);
+      if (side) map.set(m.id, side);
     }
     return map;
-  }, [filteredMatches, teamName]);
+  }, [filteredMatches, teamName, playerFullName]);
 
   const filteredPoints = useMemo(() => {
     return points.filter((p) => filteredMatchIds.has(p.match_id));
@@ -242,6 +259,7 @@ export default function PlayerScoutingReportPage() {
     return aggregateStrokeBreakdown(
       filteredPoints.map((p) => ({
         action_player_id: p.action_player_id,
+        server_id: p.server_id,
         stroke_type: p.stroke_type,
         ending_type: p.ending_type,
         point_winner_team: p.point_winner_team,
@@ -251,6 +269,21 @@ export default function PlayerScoutingReportPage() {
       playerId,
     );
   }, [filteredPoints, playerId]);
+
+  const dataQuality = useMemo(() => {
+    const pts = filteredPoints.map((p) => ({
+      action_player_id: p.action_player_id,
+      server_id: p.server_id,
+      stroke_type: p.stroke_type,
+      ending_type: p.ending_type,
+    }));
+    return {
+      pointsInSample: filteredPoints.length,
+      attributedToPlayer: countAttributedPoints(pts, playerId),
+      attributedWithStroke: countAttributedWithStroke(pts, playerId),
+      matchesWithSide: playerSideByMatchId.size,
+    };
+  }, [filteredPoints, playerId, playerSideByMatchId]);
 
   const clutch = useMemo(() => {
     return clutchBreakPointRates(filteredPoints, playerSideByMatchId);
@@ -343,10 +376,34 @@ export default function PlayerScoutingReportPage() {
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{errorMessage}</div>
         )}
 
+        <div className="print:hidden rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+          <p className="font-semibold text-slate-900">Why some sections look empty</p>
+          <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-slate-600">
+            <li>
+              <strong>Stroke / net vs baseline:</strong> Needs points credited to you (action player, or server on ace/DF)
+              and usually a <strong>stroke type</strong> on the shot. Aces often have no stroke — they appear under
+              &quot;Other&quot; or only in totals.
+            </li>
+            <li>
+              <strong>Clutch:</strong> Needs <code className="rounded bg-slate-200 px-1">is_break_point</code> and{" "}
+              <code className="rounded bg-slate-200 px-1">serving_team</code> on each point (older matches may lack them).
+            </li>
+            <li>
+              <strong>Manual match history</strong> has no point-by-point rows — only live-scored matches add data here.
+            </li>
+          </ul>
+          <p className="mt-3 text-xs text-slate-500">
+            This report sample: <strong>{dataQuality.pointsInSample}</strong> points ·{" "}
+            <strong>{dataQuality.attributedToPlayer}</strong> credited to you ·{" "}
+            <strong>{dataQuality.attributedWithStroke}</strong> with a stroke label ·{" "}
+            <strong>{dataQuality.matchesWithSide}</strong> matches with a resolved side for clutch stats.
+          </p>
+        </div>
+
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:border-slate-300 print:shadow-none">
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Stroke breakdown</h2>
           <p className="mt-1 text-xs text-slate-500">
-            Shots attributed to this player (action player). Aces without stroke are excluded.
+            Shots credited to you (action player, or server on ace/DF). Rows without a stroke type go to &quot;Other&quot;.
           </p>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[480px] border-collapse text-sm">
@@ -405,6 +462,12 @@ export default function PlayerScoutingReportPage() {
             Team-relative while you are on this side: conversion when receiving break points; save rate when serving
             facing break point.
           </p>
+          {(clutch.recvOpps === 0 && clutch.serveOpps === 0) && (
+            <p className="mt-2 text-xs text-amber-800">
+              No break-point rows in this sample (or side could not be resolved). Points must be logged with break-point
+              tagging after the DB migration.
+            </p>
+          )}
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="rounded-lg border border-slate-100 bg-slate-50 p-4">
               <p className="text-xs font-semibold uppercase text-slate-500">BP conversion (receiving)</p>

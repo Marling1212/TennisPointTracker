@@ -5,9 +5,9 @@ import { usePathname } from "next/navigation";
 
 const links = [
   { href: "/match/new", label: "Live Match" },
-  { href: "/players/team", label: "Team Roster" },
+  { href: "/players/team", label: "Players", activePath: "/players" },
   { href: "/stats", label: "Stats" },
-];
+] as const;
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -21,7 +21,10 @@ export default function Navbar() {
     <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur print:hidden">
       <div className="mx-auto grid w-full max-w-md grid-cols-3 gap-2 px-3 py-2">
         {links.map((link) => {
-          const isActive = pathname.startsWith(link.href);
+          const isActive =
+            "activePath" in link && link.activePath
+              ? pathname.startsWith(link.activePath)
+              : pathname.startsWith(link.href);
           return (
             <Link
               key={link.href}
