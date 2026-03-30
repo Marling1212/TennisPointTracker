@@ -416,14 +416,14 @@ export default function TeamStatsPage() {
               onChange={(event) => setSortKey(event.target.value as SortKey)}
               className="max-w-[min(100vw-2rem,28rem)] rounded-lg border-2 border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-900"
             >
-              <option value="totalPointsPlayed">{t("Sort: Most Points Played")}</option>
-              <option value="pointWinRate">{t("Sort: Highest Point Win %")}</option>
-              <option value="winRate">{t("Sort: Highest Match Win %")}</option>
-              <option value="matchesPlayed">{t("Sort: Most Matches Played")}</option>
-              <option value="liveMatchesPlayed">{t("Sort: Most Live (In Progress) Matches")}</option>
-              <option value="matchesWon">{t("Sort: Most Matches Won")}</option>
-              <option value="avgWinnersPerGame">{t("Sort: Highest Avg Winners / Game")}</option>
-              <option value="avgUnforcedErrorsPerGame">{t("Sort: Highest Avg UE / Game")}</option>
+              <option value="totalPointsPlayed">{t("Most Points Played")}</option>
+              <option value="pointWinRate">{t("Highest Point Win %")}</option>
+              <option value="winRate">{t("Highest Match Win %")}</option>
+              <option value="matchesPlayed">{t("Most Matches Played")}</option>
+              <option value="liveMatchesPlayed">{t("Most Live (In Progress) Matches")}</option>
+              <option value="matchesWon">{t("Most Matches Won")}</option>
+              <option value="avgWinnersPerGame">{t("Highest Avg Winners / Game")}</option>
+              <option value="avgUnforcedErrorsPerGame">{t("Highest Avg UE / Game")}</option>
             </select>
           </div>
 
@@ -433,7 +433,6 @@ export default function TeamStatsPage() {
                 <tr className="border-b-2 border-slate-300 text-left text-xs uppercase tracking-wide text-slate-800">
                   <th className="px-3 py-2">{t("Player")}</th>
                   <th className="px-3 py-2 text-right">{t("Matches")}</th>
-                  <th className="px-3 py-2 text-right">{t("Live")}</th>
                   <th className="px-3 py-2 text-right">{t("W-L")}</th>
                   <th className="px-3 py-2 text-right">{t("Match Win %")}</th>
                   <th className="px-3 py-2 text-right">{t("Games Won")}</th>
@@ -453,7 +452,7 @@ export default function TeamStatsPage() {
               <tbody>
                 {playerStats.length === 0 ? (
                   <tr>
-                    <td colSpan={17} className="px-3 py-3 text-sm text-slate-700">
+                    <td colSpan={16} className="px-3 py-3 text-sm text-slate-700">
                       {t("No players found. Add players in Team Roster.")}
                     </td>
                   </tr>
@@ -467,7 +466,6 @@ export default function TeamStatsPage() {
                         <p className="text-xs text-slate-600">@{row.nickname}</p>
                       </td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.matchesPlayed}</td>
-                      <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.liveMatchesPlayed}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">
                         {row.matchesWon}-{Math.max(row.matchesPlayed - row.matchesWon, 0)}
                       </td>
