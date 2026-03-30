@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
+import { useLanguage } from "@/components/LanguageContext";
 import { isPointAttributedToPlayer, playerSideInMatch } from "@/utils/playerScoutingAggregation";
 
 type PlayerRow = {
@@ -45,6 +46,7 @@ type MatchTypeFilter = "all" | "singles" | "doubles";
 type TimeframeFilter = "all_time" | "last_30_days";
 
 export default function PlayerCardPage() {
+  const { t } = useLanguage();
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const playerId = params.id;
@@ -80,7 +82,7 @@ export default function PlayerCardPage() {
         .maybeSingle();
 
       if (!teamData) {
-        setErrorMessage("No team found.");
+        setErrorMessage(t("No team found."));
         setIsLoading(false);
         return;
       }
@@ -94,7 +96,7 @@ export default function PlayerCardPage() {
         .maybeSingle();
 
       if (playerError || !playerData) {
-        setErrorMessage(playerError?.message ?? "Player not found.");
+        setErrorMessage(playerError?.message ?? t("Player not found."));
         setIsLoading(false);
         return;
       }
@@ -162,7 +164,7 @@ export default function PlayerCardPage() {
     };
 
     void loadAnalytics();
-  }, [playerId, router]);
+  }, [playerId, router, t]);
 
   const filteredMatches = useMemo(() => {
     const now = new Date();
@@ -260,7 +262,7 @@ export default function PlayerCardPage() {
   if (isLoading) {
     return (
       <main className="flex flex-1 items-center justify-center px-4 py-6">
-        <p className="text-sm text-slate-600">Loading player...</p>
+        <p className="text-sm text-slate-600">{t("Loading player...")}</p>
       </main>
     );
   }
@@ -268,17 +270,21 @@ export default function PlayerCardPage() {
   return (
     <main className="flex flex-1 flex-col bg-slate-900 px-4 py-6 text-white">
       <section className="w-full rounded-2xl border border-slate-700 bg-slate-800 p-5 shadow-xl">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Player Analytics Dashboard</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t("Player Analytics Dashboard")}</p>
         <h1 className="mt-1 text-2xl font-bold text-white">
-          {player ? `${player.first_name} ${player.last_name}` : "Unknown Player"}
+          {player ? `${player.first_name} ${player.last_name}` : t("Unknown Player")}
         </h1>
-        {player && <p className="mt-1 text-sm text-slate-300">@{player.nickname} • {player.dominant_hand ?? "Unknown"} hand</p>}
+        {player && (
+          <p className="mt-1 text-sm text-slate-300">
+            @{player.nickname} • {(player.dominant_hand ? t(player.dominant_hand) : t("Unknown")) + t(" hand")}
+          </p>
+        )}
         {player && (
           <Link
             href={`/players/${playerId}/report`}
             className="mt-3 inline-flex rounded-lg border border-emerald-500/60 bg-emerald-950/40 px-3 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-900/50"
           >
-            Scouting report →
+            {t("Scouting report →")}
           </Link>
         )}
         {errorMessage && (
@@ -287,66 +293,66 @@ export default function PlayerCardPage() {
 
         <div className="mt-5 grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Match Type</label>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">{t("Match Type")}</label>
             <select
               value={matchTypeFilter}
               onChange={(event) => setMatchTypeFilter(event.target.value as MatchTypeFilter)}
               className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white focus:border-slate-300 focus:outline-none"
             >
-              <option value="all">All</option>
-              <option value="singles">Singles</option>
-              <option value="doubles">Doubles</option>
+              <option value="all">{t("All")}</option>
+              <option value="singles">{t("Singles")}</option>
+              <option value="doubles">{t("Doubles")}</option>
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Timeframe</label>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">{t("Timeframe")}</label>
             <select
               value={timeframeFilter}
               onChange={(event) => setTimeframeFilter(event.target.value as TimeframeFilter)}
               className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white focus:border-slate-300 focus:outline-none"
             >
-              <option value="all_time">All Time</option>
-              <option value="last_30_days">Last 30 Days</option>
+              <option value="all_time">{t("All Time")}</option>
+              <option value="last_30_days">{t("Last 30 Days")}</option>
             </select>
           </div>
         </div>
 
         <div className="mt-6 grid grid-cols-3 gap-3">
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Win Rate</p>
+            <p className="text-xs uppercase tracking-wide text-slate-400">{t("Win Rate")}</p>
             <p className="mt-2 text-3xl font-black text-white">{analytics.winRate.toFixed(1)}%</p>
             <p className="mt-1 text-xs text-slate-500">
               {analytics.wins}W - {analytics.losses}L
             </p>
           </div>
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Matches Played</p>
+            <p className="text-xs uppercase tracking-wide text-slate-400">{t("Matches Played")}</p>
             <p className="mt-2 text-3xl font-black text-white">{analytics.matchesPlayed}</p>
           </div>
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Points Played</p>
+            <p className="text-xs uppercase tracking-wide text-slate-400">{t("Points Played")}</p>
             <p className="mt-2 text-3xl font-black text-white">{analytics.pointsPlayed}</p>
           </div>
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Aggression Ratio</p>
+            <p className="text-xs uppercase tracking-wide text-slate-400">{t("Aggression Ratio")}</p>
             <p className="mt-2 text-3xl font-black text-white">{analytics.aggressionRatio.toFixed(2)}</p>
             <p className="mt-1 text-xs text-slate-500">
               {analytics.winners}W / {analytics.unforcedErrors}UE
             </p>
           </div>
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Total Aces</p>
+            <p className="text-xs uppercase tracking-wide text-slate-400">{t("Total Aces")}</p>
             <p className="mt-2 text-3xl font-black text-white">{analytics.aces}</p>
           </div>
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Service winners</p>
+            <p className="text-xs uppercase tracking-wide text-slate-400">{t("Service winners")}</p>
             <p className="mt-2 text-3xl font-black text-white">{analytics.serviceWinners}</p>
           </div>
           <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Double Faults</p>
+            <p className="text-xs uppercase tracking-wide text-slate-400">{t("Double Faults")}</p>
             <p className="mt-2 text-3xl font-black text-white">{analytics.doubleFaults}</p>
           </div>
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Scoreboard from "@/components/Scoreboard";
 import {
@@ -13,6 +13,7 @@ import {
 } from "@/utils/scoringEngine";
 import { hydrateLiveScoringFromPoints } from "@/utils/hydrateLiveScoringFromPoints";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
+import { useLanguage } from "@/components/LanguageContext";
 
 type TeamSide = "A" | "B";
 type Phase =
@@ -481,9 +482,9 @@ const playerIdForPointsTable = (id: string | null | undefined): string | null =>
   return id;
 };
 
-const whoHitHeading = (draft: PointDraft): string => {
-  if (!draft.pointOutcome) return "Who hit it?";
-  return draft.pointOutcome === "Winner" ? "Who hit the winner?" : "Who hit the error?";
+const whoHitHeading = (draft: PointDraft, translate: (key: string) => string): string => {
+  if (!draft.pointOutcome) return translate("Who hit it?");
+  return draft.pointOutcome === "Winner" ? translate("Who hit the winner?") : translate("Who hit the error?");
 };
 
 type LiveScoringInputProps = {
@@ -495,6 +496,7 @@ type LiveScoringInputProps = {
 };
 
 export default function LiveScoringInput({ setupData, matchData, matchId, matchStatus }: LiveScoringInputProps) {
+  const { t } = useLanguage();
   const router = useRouter();
   const config = buildConfig(setupData, matchData);
   const [state, dispatch] = useReducer(createReducer(config), config, buildInitialState);
@@ -520,11 +522,23 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
   const currentServerPlayer = [...config.teamAPlayers, ...config.teamBPlayers].find(
     (player) => player.id === state.present.currentServerId,
   );
-  const currentServerName = currentServerPlayer ? getDisplayPlayerName(currentServerPlayer) : "Unknown server";
+  const currentServerName = currentServerPlayer ? getDisplayPlayerName(currentServerPlayer) : t("Unknown server");
   const activeServer = state.present.currentServerSide === "A" ? "teamA" : "teamB";
   const teamADisplayName = config.teamAPlayers.map((player) => getDisplayPlayerName(player)).join(" / ");
   const teamBDisplayName = config.teamBPlayers.map((player) => getDisplayPlayerName(player)).join(" / ");
   const sideLabel = (side: TeamSide): string => (side === "A" ? teamADisplayName : teamBDisplayName);
+
+  const phaseLabel = useMemo(() => {
+    const ph = state.present.phase;
+    if (ph === "serve-first") return t("State 1: The Serve");
+    if (ph === "serve-second") return t("State 1: 2nd Serve");
+    if (ph === "point-winner") return t("State 2: Point Winner");
+    if (ph === "point-outcome") return t("State 3: Point Outcome");
+    if (ph === "action-player") return t("State 3b: Who hit it?");
+    if (ph === "stroke") return t("State 4: Stroke");
+    if (ph === "awaiting-server-selection") return t("Awaiting server selection");
+    return t("Match Over");
+  }, [state.present.phase, t]);
 
   useEffect(() => {
     if (state.lastCompletedPoint) {
@@ -863,23 +877,6 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
           state.present.phase === "stroke"
         ? state.present.draft.pointWinner ?? null
         : null;
-  const phaseLabel =
-    state.present.phase === "serve-first"
-      ? "State 1: The Serve"
-      : state.present.phase === "serve-second"
-        ? "State 1: 2nd Serve"
-        : state.present.phase === "point-winner"
-          ? "State 2: Point Winner"
-          : state.present.phase === "point-outcome"
-            ? "State 3: Point Outcome"
-            : state.present.phase === "action-player"
-              ? "State 3b: Who hit it?"
-              : state.present.phase === "stroke"
-                ? "State 4: Stroke"
-                : state.present.phase === "awaiting-server-selection"
-                  ? "AwaitingServerSelection"
-                  : "Match Over";
-
   const matchWinnerSide: TeamSide | null =
     state.present.scoreState.sets.teamA > state.present.scoreState.sets.teamB
       ? "A"
@@ -915,7 +912,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
   const handleEditStreamLink = useCallback(async () => {
     if (!matchId || !supabase || !hasSupabaseEnv) return;
     const current = streamUrlLocal ?? "";
-    const next = window.prompt("Facebook Live stream URL (leave empty to clear)", current);
+    const next = window.prompt(t("Facebook Live stream URL (leave empty to clear)"), current);
     if (next === null) return;
     setStreamUrlSaving(true);
     const trimmed = next.trim();
@@ -926,14 +923,14 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
       return;
     }
     setStreamUrlLocal(trimmed || null);
-  }, [matchId, streamUrlLocal]);
+  }, [matchId, streamUrlLocal, t]);
 
   return (
     <div className="relative flex h-full w-full min-h-0 flex-col bg-slate-950">
       {isInitializing && (
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-slate-950/90 px-4 text-center">
-          <p className="text-lg font-black text-white">Loading match…</p>
-          <p className="text-sm text-slate-400">Restoring score from saved points</p>
+          <p className="text-lg font-black text-white">{t("Loading match…")}</p>
+          <p className="text-sm text-slate-400">{t("Restoring score from saved points")}</p>
         </div>
       )}
       <div className="flex items-center justify-between border-b border-slate-700 bg-slate-900/95 px-3 py-2">
@@ -942,18 +939,20 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
           onClick={() => router.back()}
           className="rounded-md border border-slate-500 bg-slate-800 px-2 py-1 text-xs font-semibold text-white"
         >
-          Back
+          {t("Back")}
         </button>
         <div className="text-center">
           <p className="text-xs font-bold uppercase tracking-wide text-slate-300">{phaseLabel}</p>
-          <p className="text-xs text-slate-400">Current server: {currentServerName}</p>
+          <p className="text-xs text-slate-400">
+            {t("Current server:")} {currentServerName}
+          </p>
           <div className="mt-1 inline-grid grid-cols-2 rounded-md border border-slate-600 bg-slate-800 p-0.5 text-[10px]">
             <button
               type="button"
               onClick={() => setNameMode("real")}
               className={`rounded px-2 py-1 font-semibold ${nameMode === "real" ? "bg-slate-100 text-slate-900" : "text-slate-300"}`}
             >
-              Real Names
+              {t("Real Names")}
             </button>
             <button
               type="button"
@@ -962,7 +961,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                 nameMode === "nickname" ? "bg-slate-100 text-slate-900" : "text-slate-300"
               }`}
             >
-              Nicknames
+              {t("Nicknames")}
             </button>
           </div>
         </div>
@@ -973,7 +972,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
               onClick={() => void handleShareLiveScore()}
               className="rounded-md border border-emerald-600/80 bg-emerald-950/80 px-2 py-1 text-[10px] font-semibold text-emerald-100 hover:bg-emerald-900/80"
             >
-              {shareCopied ? "Copied!" : "Share live score"}
+              {shareCopied ? t("Copied!") : t("Share live score")}
             </button>
           )}
           <button
@@ -981,7 +980,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
             onClick={() => router.push("/")}
             className="rounded-md border border-slate-500 bg-slate-800 px-2 py-1 text-xs font-semibold text-white"
           >
-            Exit
+            {t("Exit")}
           </button>
         </div>
       </div>
@@ -996,7 +995,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
               disabled={spectatorSaving || !supabase || !hasSupabaseEnv}
               onChange={(e) => void handleSpectatorPublicChange(e.target.checked)}
             />
-            <span>Public live page (spectators can open /match/…/live)</span>
+            <span>{t("Public live page (spectators can open /match/…/live)")}</span>
           </label>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -1005,10 +1004,10 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
               disabled={streamUrlSaving || !supabase || !hasSupabaseEnv}
               className="rounded-md border border-sky-600/80 bg-sky-950/80 px-2 py-1 text-[10px] font-semibold text-sky-100 hover:bg-sky-900/80 disabled:opacity-50"
             >
-              {streamUrlSaving ? "Saving…" : "Edit stream link"}
+              {streamUrlSaving ? t("Saving…") : t("Edit stream link")}
             </button>
             {autoLinkToast && spectatorPublic && (
-              <span className="text-[10px] font-semibold text-emerald-400">Live link copied — paste to share</span>
+              <span className="text-[10px] font-semibold text-emerald-400">{t("Live link copied — paste to share")}</span>
             )}
           </div>
         </div>
@@ -1030,8 +1029,12 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
         <section className="flex min-h-0 w-1/2 flex-col border-r border-slate-700 bg-slate-900 p-2">
           <div className="rounded-lg bg-slate-800 p-3 text-white">
             <p className="text-xs uppercase tracking-wide text-slate-300">{teamADisplayName}</p>
-            <p className="mt-1 text-lg font-black">Games: {state.present.scoreState.games.teamA}</p>
-            <p className="text-sm text-slate-200">Points: {String(state.present.scoreState.points.teamA)}</p>
+            <p className="mt-1 text-lg font-black">
+              {t("Games")}: {state.present.scoreState.games.teamA}
+            </p>
+            <p className="text-sm text-slate-200">
+              {t("Points")}: {String(state.present.scoreState.points.teamA)}
+            </p>
           </div>
           <div className="mt-2 flex-1 space-y-2 overflow-auto">
             {state.present.phase === "point-winner" && (
@@ -1041,14 +1044,14 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                 onClick={() => dispatch({ type: "SET_POINT_WINNER", winner: "A" })}
                 disabled={isInputDisabled}
               >
-                Team A Won Point
+                {t("Team A Won Point")}
               </button>
             )}
 
             {activeSideForStep === "A" && state.present.phase === "serve-first" && (
               <>
                 <button type="button" className={serveButton} onClick={() => dispatch({ type: "FIRST_SERVE_IN" })} disabled={isInputDisabled}>
-                  1st Serve IN
+                  {t("1st Serve IN")}
                 </button>
                 {isFirstServe && (
                   <button
@@ -1060,11 +1063,11 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                     }}
                     disabled={isInputDisabled}
                   >
-                    1st Serve FAULT
+                    {t("1st Serve FAULT")}
                   </button>
                 )}
                 <button type="button" className={serveButton} onClick={() => void handleAce()} disabled={isInputDisabled}>
-                  ACE
+                  {t("ACE")}
                 </button>
                 <button
                   type="button"
@@ -1072,7 +1075,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                   onClick={() => void handleServiceWinner()}
                   disabled={isInputDisabled}
                 >
-                  Service Winner
+                  {t("Service Winner")}
                 </button>
               </>
             )}
@@ -1080,13 +1083,13 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
             {activeSideForStep === "A" && state.present.phase === "serve-second" && (
               <>
                 <button type="button" className={serveButton} onClick={() => dispatch({ type: "SECOND_SERVE_IN" })} disabled={isInputDisabled}>
-                  2nd Serve IN
+                  {t("2nd Serve IN")}
                 </button>
                 <button type="button" className={serveButton} onClick={() => void handleDoubleFault()} disabled={isInputDisabled}>
-                  DOUBLE FAULT
+                  {t("DOUBLE FAULT")}
                 </button>
                 <button type="button" className={serveButton} onClick={() => void handleAce()} disabled={isInputDisabled}>
-                  ACE
+                  {t("ACE")}
                 </button>
                 <button
                   type="button"
@@ -1094,7 +1097,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                   onClick={() => void handleServiceWinner()}
                   disabled={isInputDisabled}
                 >
-                  Service Winner
+                  {t("Service Winner")}
                 </button>
               </>
             )}
@@ -1107,7 +1110,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                   onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Winner" })}
                   disabled={isInputDisabled}
                 >
-                  Winner
+                  {t("Winner")}
                 </button>
                 <button
                   type="button"
@@ -1115,7 +1118,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                   onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Unforced Error" })}
                   disabled={isInputDisabled}
                 >
-                  Unforced Error
+                  {t("Unforced Error")}
                 </button>
                 <button
                   type="button"
@@ -1123,14 +1126,14 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                   onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Forced Error" })}
                   disabled={isInputDisabled}
                 >
-                  Forced Error
+                  {t("Forced Error")}
                 </button>
               </>
             )}
 
             {state.present.phase === "action-player" && actionPlayerSelectionTeam(state.present.draft) === "A" && (
               <>
-                <p className="text-xs font-semibold text-slate-300">{whoHitHeading(state.present.draft)}</p>
+                <p className="text-xs font-semibold text-slate-300">{whoHitHeading(state.present.draft, t)}</p>
                 {teamPlayers("A", config).map((player) => (
                   <button
                     key={player.id}
@@ -1148,16 +1151,16 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
             {activeSideForStep === "A" && state.present.phase === "stroke" && (
               <>
                 <button type="button" className={neutralButton} onClick={() => void handleSetStroke("Forehand")} disabled={isInputDisabled}>
-                  Forehand
+                  {t("Forehand")}
                 </button>
                 <button type="button" className={neutralButton} onClick={() => void handleSetStroke("Backhand")} disabled={isInputDisabled}>
-                  Backhand
+                  {t("Backhand")}
                 </button>
                 <button type="button" className={neutralButton} onClick={() => void handleSetStroke("Volley")} disabled={isInputDisabled}>
-                  Volley
+                  {t("Volley")}
                 </button>
                 <button type="button" className={neutralButton} onClick={() => void handleSetStroke("Overhead")} disabled={isInputDisabled}>
-                  Overhead
+                  {t("Overhead")}
                 </button>
               </>
             )}
@@ -1167,8 +1170,12 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
         <section className="flex min-h-0 w-1/2 flex-col bg-slate-950 p-2">
           <div className="rounded-lg bg-slate-800 p-3 text-white">
             <p className="text-xs uppercase tracking-wide text-slate-300">{teamBDisplayName}</p>
-            <p className="mt-1 text-lg font-black">Games: {state.present.scoreState.games.teamB}</p>
-            <p className="text-sm text-slate-200">Points: {String(state.present.scoreState.points.teamB)}</p>
+            <p className="mt-1 text-lg font-black">
+              {t("Games")}: {state.present.scoreState.games.teamB}
+            </p>
+            <p className="text-sm text-slate-200">
+              {t("Points")}: {String(state.present.scoreState.points.teamB)}
+            </p>
           </div>
           <div className="mt-2 flex-1 space-y-2 overflow-auto">
             {state.present.phase === "point-winner" && (
@@ -1178,14 +1185,14 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                 onClick={() => dispatch({ type: "SET_POINT_WINNER", winner: "B" })}
                 disabled={isInputDisabled}
               >
-                Team B Won Point
+                {t("Team B Won Point")}
               </button>
             )}
 
             {activeSideForStep === "B" && state.present.phase === "serve-first" && (
               <>
                 <button type="button" className={serveButton} onClick={() => dispatch({ type: "FIRST_SERVE_IN" })} disabled={isInputDisabled}>
-                  1st Serve IN
+                  {t("1st Serve IN")}
                 </button>
                 {isFirstServe && (
                   <button
@@ -1197,11 +1204,11 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                     }}
                     disabled={isInputDisabled}
                   >
-                    1st Serve FAULT
+                    {t("1st Serve FAULT")}
                   </button>
                 )}
                 <button type="button" className={serveButton} onClick={() => void handleAce()} disabled={isInputDisabled}>
-                  ACE
+                  {t("ACE")}
                 </button>
                 <button
                   type="button"
@@ -1209,7 +1216,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                   onClick={() => void handleServiceWinner()}
                   disabled={isInputDisabled}
                 >
-                  Service Winner
+                  {t("Service Winner")}
                 </button>
               </>
             )}
@@ -1217,13 +1224,13 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
             {activeSideForStep === "B" && state.present.phase === "serve-second" && (
               <>
                 <button type="button" className={serveButton} onClick={() => dispatch({ type: "SECOND_SERVE_IN" })} disabled={isInputDisabled}>
-                  2nd Serve IN
+                  {t("2nd Serve IN")}
                 </button>
                 <button type="button" className={serveButton} onClick={() => void handleDoubleFault()} disabled={isInputDisabled}>
-                  DOUBLE FAULT
+                  {t("DOUBLE FAULT")}
                 </button>
                 <button type="button" className={serveButton} onClick={() => void handleAce()} disabled={isInputDisabled}>
-                  ACE
+                  {t("ACE")}
                 </button>
                 <button
                   type="button"
@@ -1231,7 +1238,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                   onClick={() => void handleServiceWinner()}
                   disabled={isInputDisabled}
                 >
-                  Service Winner
+                  {t("Service Winner")}
                 </button>
               </>
             )}
@@ -1244,7 +1251,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                   onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Winner" })}
                   disabled={isInputDisabled}
                 >
-                  Winner
+                  {t("Winner")}
                 </button>
                 <button
                   type="button"
@@ -1252,7 +1259,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                   onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Unforced Error" })}
                   disabled={isInputDisabled}
                 >
-                  Unforced Error
+                  {t("Unforced Error")}
                 </button>
                 <button
                   type="button"
@@ -1260,14 +1267,14 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
                   onClick={() => dispatch({ type: "SET_POINT_OUTCOME", outcome: "Forced Error" })}
                   disabled={isInputDisabled}
                 >
-                  Forced Error
+                  {t("Forced Error")}
                 </button>
               </>
             )}
 
             {state.present.phase === "action-player" && actionPlayerSelectionTeam(state.present.draft) === "B" && (
               <>
-                <p className="text-xs font-semibold text-slate-300">{whoHitHeading(state.present.draft)}</p>
+                <p className="text-xs font-semibold text-slate-300">{whoHitHeading(state.present.draft, t)}</p>
                 {teamPlayers("B", config).map((player) => (
                   <button
                     key={player.id}
@@ -1285,16 +1292,16 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
             {activeSideForStep === "B" && state.present.phase === "stroke" && (
               <>
                 <button type="button" className={neutralButton} onClick={() => void handleSetStroke("Forehand")} disabled={isInputDisabled}>
-                  Forehand
+                  {t("Forehand")}
                 </button>
                 <button type="button" className={neutralButton} onClick={() => void handleSetStroke("Backhand")} disabled={isInputDisabled}>
-                  Backhand
+                  {t("Backhand")}
                 </button>
                 <button type="button" className={neutralButton} onClick={() => void handleSetStroke("Volley")} disabled={isInputDisabled}>
-                  Volley
+                  {t("Volley")}
                 </button>
                 <button type="button" className={neutralButton} onClick={() => void handleSetStroke("Overhead")} disabled={isInputDisabled}>
-                  Overhead
+                  {t("Overhead")}
                 </button>
               </>
             )}
@@ -1311,15 +1318,16 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
         }}
         disabled={state.history.length === 0 || isInputDisabled}
       >
-        Undo
+        {t("Undo")}
       </button>
 
       {state.present.phase === "awaiting-server-selection" && state.present.awaitingServerSide && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/95 p-4">
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 text-center shadow-xl">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Awaiting Server Selection</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t("Awaiting Server Selection")}</p>
             <h3 className="mt-2 text-xl font-bold text-slate-900">
-              Who is serving for {sideLabel(state.present.awaitingServerSide)}?
+              {t("Who is serving for")} {sideLabel(state.present.awaitingServerSide)}
+              {t("?")}
             </h3>
             <div className="mt-4 grid grid-cols-1 gap-3">
               {teamPlayers(state.present.awaitingServerSide, config).map((player) => (
@@ -1340,14 +1348,14 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
       {state.present.phase === "match-over" && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/95 p-4">
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 text-center shadow-xl">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Match Complete</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t("Match Complete")}</p>
             <h3 className="mt-2 text-xl font-bold text-slate-900">
-              {matchWinnerSide ? `${sideLabel(matchWinnerSide)} wins` : "Match finished"}
+              {matchWinnerSide ? `${sideLabel(matchWinnerSide)} ${t("wins")}` : t("Match finished")}
             </h3>
             <p className="mt-2 text-sm text-slate-700">
-              Final sets: {state.present.scoreState.sets.teamA} - {state.present.scoreState.sets.teamB}
+              {t("Final sets:")} {state.present.scoreState.sets.teamA} - {state.present.scoreState.sets.teamB}
             </p>
-            <p className="mt-3 text-xs text-slate-500">Redirecting to match stats...</p>
+            <p className="mt-3 text-xs text-slate-500">{t("Redirecting to match stats...")}</p>
           </div>
         </div>
       )}

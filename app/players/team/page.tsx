@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
+import { useLanguage } from "@/components/LanguageContext";
 
 type TeamRow = {
   id: string;
@@ -20,6 +21,7 @@ type PlayerRow = {
 };
 
 export default function TeamRosterPage() {
+  const { t } = useLanguage();
   const router = useRouter();
   const [team, setTeam] = useState<TeamRow | null>(null);
   const [players, setPlayers] = useState<PlayerRow[]>([]);
@@ -61,7 +63,7 @@ export default function TeamRosterPage() {
       }
 
       if (!teamData) {
-        setErrorMessage("No team found for this account.");
+        setErrorMessage(t("No team found for this account."));
         setIsLoading(false);
         return;
       }
@@ -85,7 +87,7 @@ export default function TeamRosterPage() {
     };
 
     void loadRoster();
-  }, [router]);
+  }, [router, t]);
 
   const handleAddPlayer = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -136,7 +138,7 @@ export default function TeamRosterPage() {
   if (isLoading) {
     return (
       <main className="flex flex-1 items-center justify-center bg-slate-900 px-4 py-6">
-        <p className="text-sm text-slate-300">Loading roster...</p>
+        <p className="text-sm text-slate-300">{t("Loading roster...")}</p>
       </main>
     );
   }
@@ -148,14 +150,16 @@ export default function TeamRosterPage() {
           href="/"
           className="inline-flex items-center rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-200"
         >
-          Back to Dashboard
+          {t("Back to Dashboard")}
         </Link>
-        <h1 className="text-2xl font-bold text-white">{team?.name ?? "Team"} Roster</h1>
-        <p className="mt-2 text-sm text-slate-300">Add players to your team and manage your roster.</p>
+        <h1 className="text-2xl font-bold text-white">
+          {team?.name ?? t("Team")} {t("Roster title")}
+        </h1>
+        <p className="mt-2 text-sm text-slate-300">{t("Add players to your team and manage your roster.")}</p>
 
         <form onSubmit={handleAddPlayer} className="mt-5 space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">First Name</label>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">{t("First Name")}</label>
             <input
               value={firstName}
               onChange={(event) => setFirstName(event.target.value)}
@@ -166,7 +170,7 @@ export default function TeamRosterPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Last Name</label>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">{t("Last Name")}</label>
             <input
               value={lastName}
               onChange={(event) => setLastName(event.target.value)}
@@ -177,7 +181,7 @@ export default function TeamRosterPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Nickname</label>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">{t("Nickname")}</label>
             <input
               value={nickname}
               onChange={(event) => setNickname(event.target.value)}
@@ -188,14 +192,14 @@ export default function TeamRosterPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Dominant Hand</label>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">{t("Dominant Hand")}</label>
             <select
               value={dominantHand}
               onChange={(event) => setDominantHand(event.target.value as "Right" | "Left")}
               className="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-white focus:border-slate-300 focus:outline-none"
             >
-              <option value="Right">Right</option>
-              <option value="Left">Left</option>
+              <option value="Right">{t("Right")}</option>
+              <option value="Left">{t("Left")}</option>
             </select>
           </div>
 
@@ -208,13 +212,13 @@ export default function TeamRosterPage() {
             disabled={isSubmitting || !team}
             className="w-full rounded-lg bg-emerald-600 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isSubmitting ? "Adding..." : "Add Player"}
+            {isSubmitting ? t("Adding...") : t("Add Player")}
           </button>
         </form>
 
         <div className="mt-5 space-y-2">
           {players.length === 0 ? (
-            <p className="text-sm text-slate-300">No players yet. Add your first player above.</p>
+            <p className="text-sm text-slate-300">{t("No players yet. Add your first player above.")}</p>
           ) : (
             players.map((player) => (
               <div
@@ -226,7 +230,8 @@ export default function TeamRosterPage() {
                     {player.first_name} {player.last_name}
                   </p>
                   <p className="text-xs text-slate-400">
-                    @{player.nickname} · {player.dominant_hand ?? "Unknown"} hand
+                    @{player.nickname} ·{" "}
+                    {(player.dominant_hand ? t(player.dominant_hand) : t("Unknown")) + t(" hand")}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -234,20 +239,20 @@ export default function TeamRosterPage() {
                     href={`/players/${player.id}`}
                     className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-center text-xs font-semibold text-white hover:bg-slate-700"
                   >
-                    Analytics
+                    {t("Analytics")}
                   </Link>
                   <Link
                     href={`/players/${player.id}/report`}
                     className="rounded-lg border border-emerald-600/80 bg-emerald-950/50 px-3 py-2 text-center text-xs font-semibold text-emerald-200 hover:bg-emerald-900/60"
                   >
-                    Scouting report
+                    {t("Scouting report")}
                   </Link>
                   <button
                     type="button"
                     onClick={() => handleDeletePlayer(player.id)}
                     className="rounded-lg border border-red-700 bg-red-900/60 px-3 py-2 text-xs font-semibold text-red-200"
                   >
-                    Delete
+                    {t("Delete")}
                   </button>
                 </div>
               </div>

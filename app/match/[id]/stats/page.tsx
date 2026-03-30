@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
+import { useLanguage } from "@/components/LanguageContext";
 import { resolveWinnerFromLoggedPoints } from "@/utils/matchWinnerFromPoints";
 import type { MatchRules } from "@/utils/spectatorReplay";
 
@@ -392,6 +393,7 @@ function formatStatCell(
 }
 
 export default function MatchStatsPage() {
+  const { t } = useLanguage();
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const matchId = params.id;
@@ -555,28 +557,31 @@ export default function MatchStatsPage() {
     const outcome = resolveWinnerFromLoggedPoints(spectatorPoints, rules);
     if (outcome === "teamA") return teamAName;
     if (outcome === "teamB") return teamBName;
-    return "Draw";
-  }, [match, points]);
+    return t("Draw");
+  }, [match, points, t]);
 
   const teamAHeader =
     isDoubles && lineupA.length >= 2 ? `${lineupA[0].label} / ${lineupA[1].label}` : (match?.team_a_name ?? "Team A");
   const teamBHeader =
     isDoubles && lineupB.length >= 2 ? `${lineupB[0].label} / ${lineupB[1].label}` : (match?.team_b_name ?? "Team B");
 
-  const statRows: Array<{ key: StatKey; label: string }> = [
-    { key: "totalPointsWon", label: "Rally points won" },
-    { key: "winners", label: "Winners" },
-    { key: "unforcedErrors", label: "Unforced Errors" },
-    { key: "forcedErrors", label: "Forced Errors" },
-    { key: "aces", label: "Aces" },
-    { key: "serviceWinners", label: "Service winners" },
-    { key: "doubleFaults", label: "Double Faults" },
-  ];
+  const statRows = useMemo<Array<{ key: StatKey; label: string }>>(
+    () => [
+      { key: "totalPointsWon", label: t("Total Points Won") },
+      { key: "winners", label: t("Winners") },
+      { key: "unforcedErrors", label: t("Unforced Errors") },
+      { key: "forcedErrors", label: t("Forced Errors") },
+      { key: "aces", label: t("Aces") },
+      { key: "serviceWinners", label: t("Service winners") },
+      { key: "doubleFaults", label: t("Double Faults") },
+    ],
+    [t],
+  );
 
   if (isLoading) {
     return (
       <main className="flex flex-1 items-center justify-center bg-white px-4 py-6">
-        <p className="text-sm text-slate-900">Loading match stats...</p>
+        <p className="text-sm text-slate-900">{t("Loading match stats...")}</p>
       </main>
     );
   }
@@ -589,19 +594,19 @@ export default function MatchStatsPage() {
             href="/"
             className="inline-flex items-center rounded-lg border-2 border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900"
           >
-            Back to Dashboard
+            {t("Back to Dashboard")}
           </Link>
-          <p className="text-xs uppercase tracking-wide text-slate-700">{match?.status ?? "Match"}</p>
+          <p className="text-xs uppercase tracking-wide text-slate-700">{match?.status ?? t("Match")}</p>
         </div>
 
-        <h1 className="mt-3 text-xl font-black text-slate-900">Post-Match Stats</h1>
+        <h1 className="mt-3 text-xl font-black text-slate-900">{t("Post-Match Stats")}</h1>
         {match?.score_summary?.trim() ? (
           <p className="mt-2 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">{match.score_summary.trim()}</p>
         ) : null}
         <div className="mt-3 rounded-lg border-2 border-slate-300 bg-slate-50 px-3 py-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Winner</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{t("Winner label")}</p>
           <p className="text-lg font-black text-slate-900">{winnerLabel}</p>
-          <p className="mt-1 text-xs text-slate-600">Based on sets and games, not rally point totals.</p>
+          <p className="mt-1 text-xs text-slate-600">{t("Winner note")}</p>
         </div>
         {errorMessage && (
           <div className="mt-3 rounded-lg border-2 border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMessage}</div>
@@ -610,7 +615,7 @@ export default function MatchStatsPage() {
         <div className="mt-4 rounded-xl border-2 border-slate-300 bg-white">
           <div className="grid grid-cols-3 border-b-2 border-slate-300 px-3 py-2 text-xs font-bold uppercase tracking-wide text-slate-700">
             <p className="text-left leading-snug">{teamAHeader}</p>
-            <p className="text-center">Stat</p>
+            <p className="text-center">{t("Stat")}</p>
             <p className="text-right leading-snug">{teamBHeader}</p>
           </div>
 
@@ -650,7 +655,7 @@ export default function MatchStatsPage() {
                 <p className={`text-left text-sm ${aGreen ? "font-black text-emerald-700" : "text-slate-900"}`}>
                   {bpA.converted} / {bpA.opportunities}
                 </p>
-                <p className="text-center text-sm font-semibold text-slate-900">Break Points</p>
+                <p className="text-center text-sm font-semibold text-slate-900">{t("Break Points")}</p>
                 <p className={`text-right text-sm ${bGreen ? "font-black text-emerald-700" : "text-slate-900"}`}>
                   {bpB.converted} / {bpB.opportunities}
                 </p>
@@ -673,7 +678,7 @@ export default function MatchStatsPage() {
                 <p className={`text-left text-sm ${aGreen ? "font-black text-emerald-700" : "text-slate-900"}`}>
                   {mpA.converted} / {mpA.opportunities}
                 </p>
-                <p className="text-center text-sm font-semibold text-slate-900">Match Points</p>
+                <p className="text-center text-sm font-semibold text-slate-900">{t("Match Points")}</p>
                 <p className={`text-right text-sm ${bGreen ? "font-black text-emerald-700" : "text-slate-900"}`}>
                   {mpB.converted} / {mpB.opportunities}
                 </p>
@@ -684,11 +689,11 @@ export default function MatchStatsPage() {
 
         <div className="mt-4 grid grid-cols-2 gap-2">
           <div className="rounded-lg border-2 border-slate-300 bg-white px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Total Points</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{t("Total Points")}</p>
             <p className="text-xl font-black text-slate-900">{points.length}</p>
           </div>
           <div className="rounded-lg border-2 border-slate-300 bg-white px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Rally point margin</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{t("Rally point margin")}</p>
             <p className="text-xl font-black text-slate-900">
               {Math.abs(stats.teamA.totalPointsWon - stats.teamB.totalPointsWon)}
             </p>

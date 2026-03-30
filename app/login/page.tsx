@@ -3,10 +3,12 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
+import { useLanguage } from "@/components/LanguageContext";
 
 type AuthMode = "sign-in" | "sign-up";
 
 export default function LoginPage() {
+  const { t } = useLanguage();
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>("sign-in");
   const [email, setEmail] = useState("");
@@ -16,14 +18,16 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isSignIn = mode === "sign-in";
-  const submitLabel = useMemo(() => (isSignIn ? "Sign In" : "Create Account"), [isSignIn]);
+  const submitLabel = useMemo(() => (isSignIn ? t("Sign In") : t("Create Account")), [isSignIn, t]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setErrorMessage("");
 
     if (!supabase || !hasSupabaseEnv) {
-      setErrorMessage("Missing Supabase environment variables. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+      setErrorMessage(
+        t("Missing Supabase environment variables. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY."),
+      );
       return;
     }
 
@@ -35,7 +39,7 @@ export default function LoginPage() {
         if (error) throw error;
       } else {
         if (!username.trim()) {
-          throw new Error("Username is required.");
+          throw new Error(t("Username is required."));
         }
 
         const { data, error } = await supabase.auth.signUp({ email, password });
@@ -62,7 +66,7 @@ export default function LoginPage() {
       router.push("/");
       router.refresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Something went wrong. Please try again.";
+      const message = error instanceof Error ? error.message : t("Something went wrong. Please try again.");
       setErrorMessage(message);
     } finally {
       setIsSubmitting(false);
@@ -72,13 +76,14 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen flex-1 flex-col justify-center bg-slate-950 px-4 py-8 text-white">
       <section className="mx-auto w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tennis Team Manager</p>
-        <h1 className="mt-2 text-2xl font-black text-white">{isSignIn ? "Sign In" : "Create Account"}</h1>
-        <p className="mt-2 text-sm text-slate-300">Access your teams, rosters, and live scoring dashboard.</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t("Tennis Team Manager")}</p>
+        <h1 className="mt-2 text-2xl font-black text-white">{isSignIn ? t("Sign In") : t("Create Account")}</h1>
+        <p className="mt-2 text-sm text-slate-300">{t("Access your teams, rosters, and live scoring dashboard.")}</p>
         {!hasSupabaseEnv && (
           <div className="mt-4 rounded-xl border border-amber-700 bg-amber-900/40 px-3 py-2 text-xs text-amber-200">
-            Missing Supabase environment variables. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to your
-            environment config and restart dev server.
+            {t(
+              "Missing Supabase environment variables. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to your environment config and restart dev server.",
+            )}
           </div>
         )}
 
@@ -90,7 +95,7 @@ export default function LoginPage() {
               isSignIn ? "bg-slate-100 text-slate-900" : "text-slate-300"
             }`}
           >
-            Sign In
+            {t("Sign In")}
           </button>
           <button
             type="button"
@@ -99,14 +104,14 @@ export default function LoginPage() {
               !isSignIn ? "bg-slate-100 text-slate-900" : "text-slate-300"
             }`}
           >
-            Create Account
+            {t("Create Account")}
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-3">
           <div>
             <label htmlFor="email" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Email
+              {t("Email")}
             </label>
             <input
               id="email"
@@ -121,7 +126,7 @@ export default function LoginPage() {
 
           <div>
             <label htmlFor="password" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Password
+              {t("Password")}
             </label>
             <input
               id="password"
@@ -137,7 +142,7 @@ export default function LoginPage() {
           {!isSignIn && (
             <div>
               <label htmlFor="username" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Username
+                {t("Username")}
               </label>
               <input
                 id="username"
@@ -160,7 +165,7 @@ export default function LoginPage() {
             disabled={isSubmitting}
             className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isSubmitting ? "Working..." : submitLabel}
+            {isSubmitting ? t("Working...") : submitLabel}
           </button>
         </form>
       </section>

@@ -1,4 +1,7 @@
+"use client";
+
 import type { ScoreState } from "@/utils/scoringEngine";
+import { useLanguage } from "@/components/LanguageContext";
 
 type ScoreboardProps = {
   scoreState: ScoreState;
@@ -8,6 +11,8 @@ type ScoreboardProps = {
 };
 
 export default function Scoreboard({ scoreState, teamAName, teamBName, activeServer }: ScoreboardProps) {
+  const { t } = useLanguage();
+
   const renderName = (teamName: string, teamKey: "teamA" | "teamB") => (
     <div className="flex items-center gap-1">
       {activeServer === teamKey && <span className="text-[11px]">🎾</span>}
@@ -18,10 +23,10 @@ export default function Scoreboard({ scoreState, teamAName, teamBName, activeSer
   return (
     <div className="z-50 w-full rounded-lg border border-slate-500 bg-slate-900/90 p-2 shadow-2xl backdrop-blur-sm">
       <div className="grid grid-cols-4 gap-x-1 border-b border-slate-600 pb-1 text-[9px] font-bold uppercase tracking-wide text-slate-300">
-        <p>Name</p>
-        <p className="text-center">Sets</p>
-        <p className="text-center">Games</p>
-        <p className="text-center">Points</p>
+        <p>{t("Name")}</p>
+        <p className="text-center">{t("Sets")}</p>
+        <p className="text-center">{t("Games")}</p>
+        <p className="text-center">{t("Points")}</p>
       </div>
 
       <div className="grid grid-cols-4 items-center gap-x-1 border-b border-slate-700 py-1">

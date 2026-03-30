@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
+import { useLanguage } from "@/components/LanguageContext";
 import {
   aggregateStrokeBreakdown,
   clutchBreakPointRates,
@@ -186,6 +187,7 @@ function ReturnPctBar({ label, value, sub }: { label: string; value: number | nu
 }
 
 export default function PlayerScoutingReportPage() {
+  const { t } = useLanguage();
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const playerId = params.id;
@@ -389,16 +391,19 @@ export default function PlayerScoutingReportPage() {
     [filteredPoints, playerSideByMatchId],
   );
 
-  const displayName = player ? `${player.first_name} ${player.last_name}`.trim() : "Player";
+  const displayName = player ? `${player.first_name} ${player.last_name}`.trim() : t("Player");
   const today = useMemo(() => new Date().toLocaleDateString(undefined, { dateStyle: "long" }), []);
 
-  const matchTypeLabel =
-    matchType === "all" ? "All match types" : matchType === "singles" ? "Singles only" : "Doubles only";
+  const matchTypeLabel = useMemo(
+    () =>
+      matchType === "all" ? t("All match types") : matchType === "singles" ? t("Singles only") : t("Doubles only"),
+    [matchType, t],
+  );
 
   if (isLoading) {
     return (
       <main className="flex flex-1 items-center justify-center bg-white px-4 py-8 print:bg-white">
-        <p className="text-sm text-slate-600">Loading report…</p>
+        <p className="text-sm text-slate-600">{t("Loading report…")}</p>
       </main>
     );
   }
@@ -411,7 +416,7 @@ export default function PlayerScoutingReportPage() {
       {/* Print-only header */}
       <header className="hidden border-b border-slate-300 pb-3 print:mb-4 print:block">
         <h1 className="text-xl font-black text-slate-900">
-          {displayName} — Scouting Report — {today}
+          {displayName} — {t("Scouting Report")} — {today}
         </h1>
         <p className="mt-1 text-sm text-slate-600">{matchTypeLabel}</p>
       </header>
@@ -423,20 +428,20 @@ export default function PlayerScoutingReportPage() {
             href={`/players/${playerId}`}
             className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800"
           >
-            ← Back to player
+            {t("Back to player")}
           </Link>
           <button
             type="button"
             onClick={() => window.print()}
             className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow hover:bg-slate-800"
           >
-            Export PDF Report
+            {t("Export PDF Report")}
           </button>
         </div>
 
         <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center">
           <label htmlFor="scout-match-type" className="text-sm font-semibold text-slate-700">
-            Match type
+            {t("Match type")}
           </label>
           <select
             id="scout-match-type"
@@ -444,9 +449,9 @@ export default function PlayerScoutingReportPage() {
             onChange={(e) => setMatchType(e.target.value as MatchTypeFilter)}
             className="max-w-xs rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
           >
-            <option value="all">All</option>
-            <option value="singles">Singles</option>
-            <option value="doubles">Doubles</option>
+            <option value="all">{t("All")}</option>
+            <option value="singles">{t("Singles")}</option>
+            <option value="doubles">{t("Doubles")}</option>
           </select>
         </div>
       </div>
@@ -454,7 +459,7 @@ export default function PlayerScoutingReportPage() {
       <div className="space-y-8 px-0 pb-12 print:space-y-6 print:pb-0">
         {/* On-screen title (hidden when printing — print uses header above) */}
         <div className="print:hidden">
-          <h1 className="text-2xl font-black text-slate-900">Player Scouting Report</h1>
+          <h1 className="text-2xl font-black text-slate-900">{t("Player Scouting Report")}</h1>
           <p className="mt-1 text-lg font-semibold text-slate-700">{displayName}</p>
           {player?.nickname ? (
             <p className="text-sm text-slate-500">@{player.nickname}</p>
@@ -466,7 +471,7 @@ export default function PlayerScoutingReportPage() {
         )}
 
         <div className="print:hidden rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-          <p className="font-semibold text-slate-900">Why some sections look empty</p>
+          <p className="font-semibold text-slate-900">{t("Why some sections look empty")}</p>
           <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-slate-600">
             <li>
               <strong>Stroke / net vs baseline:</strong> Needs points credited to you (action player, or server on ace/DF)
@@ -490,7 +495,7 @@ export default function PlayerScoutingReportPage() {
         </div>
 
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:border-slate-300 print:shadow-none">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Stroke breakdown</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">{t("Stroke breakdown")}</h2>
           <p className="mt-1 text-xs text-slate-500">
             Shots credited to you (action player, or server on ace/DF). Rows without a stroke type go to &quot;Other&quot;.
           </p>
@@ -519,7 +524,7 @@ export default function PlayerScoutingReportPage() {
         </section>
 
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:border-slate-300 print:shadow-none">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Weapon vs liability</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">{t("Weapon vs liability")}</h2>
           <p className="mt-1 text-xs text-slate-500">Forehand & backhand: winner share vs unforced error share (same stroke).</p>
           <div className="mt-6 grid gap-8 md:grid-cols-2">
             <RatioBar
@@ -536,7 +541,7 @@ export default function PlayerScoutingReportPage() {
         </section>
 
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:border-slate-300 print:shadow-none">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Net vs baseline</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">{t("Net vs baseline")}</h2>
           <p className="mt-1 text-xs text-slate-500">
             Where this player finishes points (winner or ace shots with stroke: Volley/Overhead vs Forehand/Backhand).
           </p>
@@ -547,7 +552,7 @@ export default function PlayerScoutingReportPage() {
 
         <div className="grid gap-6 lg:grid-cols-2 print:grid-cols-2 print:gap-4">
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:block print:border-slate-300 print:shadow-none">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Service performance</h2>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">{t("Service performance")}</h2>
             <p className="mt-1 text-xs text-slate-500">
               Hold % uses game-ending points where you were <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">server_id</code> and the next point starts at{" "}
               <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">0-0</code>, or the last point of the match.
@@ -577,7 +582,7 @@ export default function PlayerScoutingReportPage() {
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:block print:border-slate-300 print:shadow-none">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Return performance</h2>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">{t("Return performance")}</h2>
             <p className="mt-1 text-xs text-slate-500">
               Points where the opponent is serving (<code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">serving_team</code> ≠ your side). Win % = your team won the point.
             </p>
@@ -597,7 +602,7 @@ export default function PlayerScoutingReportPage() {
         </div>
 
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:border-slate-300 print:shadow-none">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Clutch (break points)</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">{t("Clutch (break points)")}</h2>
           <p className="mt-1 text-xs text-slate-500">
             Team-relative while you are on this side: conversion when receiving break points; save rate when serving
             facing break point.

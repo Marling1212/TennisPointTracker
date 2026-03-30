@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
+import { useLanguage } from "@/components/LanguageContext";
 
 type MatchFormat = "singles" | "doubles";
 type OpponentMode = "roster" | "guest";
@@ -28,6 +29,7 @@ type RosterPlayerRow = {
 type EntryMode = "live" | "past";
 
 export default function NewMatchPage() {
+  const { t } = useLanguage();
   const router = useRouter();
   const [roster, setRoster] = useState<CourtPlayer[]>([]);
   const [teamId, setTeamId] = useState<string | null>(null);
@@ -83,7 +85,7 @@ export default function NewMatchPage() {
         .maybeSingle();
 
       if (teamError || !teamData) {
-        setErrorMessage(teamError?.message ?? "No team found for this account.");
+        setErrorMessage(teamError?.message ?? t("No team found for this account."));
         setIsLoading(false);
         return;
       }
@@ -115,7 +117,7 @@ export default function NewMatchPage() {
     };
 
     void loadRoster();
-  }, [router]);
+  }, [router, t]);
 
   useEffect(() => {
     if (!isStartingMatch && !isSavingPast) return;
@@ -201,7 +203,7 @@ export default function NewMatchPage() {
           .filter((player): player is CourtPlayer => player !== null)
       : teamAGuestNames.slice(0, requiredPlayers).map((name, index): CourtPlayer => ({
           id: `team-a-guest-${index + 1}`,
-          name: name.trim() || `Guest ${index + 1}`,
+          name: name.trim() || `${t("Guest")} ${index + 1}`,
           side: "A",
           slot: index + 1,
         }));
@@ -225,7 +227,7 @@ export default function NewMatchPage() {
       : teamBGuestNames.slice(0, requiredPlayers).map(
           (name, index): CourtPlayer => ({
             id: `team-b-guest-${index + 1}`,
-            name: name.trim() || `Guest ${index + 1}`,
+            name: name.trim() || `${t("Guest")} ${index + 1}`,
             side: "B",
             slot: index + 1,
           }),
@@ -239,8 +241,10 @@ export default function NewMatchPage() {
     isTeamsReady &&
     (pastWinningTeam === "teamA" || pastWinningTeam === "teamB") &&
     pastScoreSummary.trim().length > 0;
-  const teamALabel = teamAPlayers.map((player) => player.name).join(" / ") || (teamAMode === "roster" ? teamName : "Guest Team A");
-  const teamBLabel = teamBPlayers.map((player) => player.name).join(" / ") || (teamBMode === "roster" ? `${teamName} Roster B` : "Guest Team B");
+  const teamALabel =
+    teamAPlayers.map((player) => player.name).join(" / ") || (teamAMode === "roster" ? teamName : t("Guest Team A"));
+  const teamBLabel =
+    teamBPlayers.map((player) => player.name).join(" / ") || (teamBMode === "roster" ? `${teamName} ${t("Roster B")}` : t("Guest Team B"));
 
   const savePastMatch = async () => {
     if (!canSavePast) return;
@@ -255,7 +259,7 @@ export default function NewMatchPage() {
     }
     if (!teamId) {
       unlockStartMatch();
-      setErrorMessage("Team not found. Please refresh and try again.");
+      setErrorMessage(t("Team not found. Please refresh and try again."));
       return;
     }
 
@@ -300,13 +304,13 @@ export default function NewMatchPage() {
       insertError = result.error;
     } catch {
       unlockStartMatch();
-      setErrorMessage("Unable to save match.");
+      setErrorMessage(t("Unable to save match."));
       return;
     }
 
     if (insertError || !insertedMatch) {
       unlockStartMatch();
-      setErrorMessage(insertError?.message ?? "Unable to save match.");
+      setErrorMessage(insertError?.message ?? t("Unable to save match."));
       return;
     }
 
@@ -326,7 +330,7 @@ export default function NewMatchPage() {
     }
     if (!teamId) {
       unlockStartMatch();
-      setErrorMessage("Team not found. Please refresh and try again.");
+      setErrorMessage(t("Team not found. Please refresh and try again."));
       return;
     }
 
@@ -377,13 +381,13 @@ export default function NewMatchPage() {
       insertError = result.error;
     } catch {
       unlockStartMatch();
-      setErrorMessage("Unable to create match.");
+      setErrorMessage(t("Unable to create match."));
       return;
     }
 
     if (insertError || !insertedMatch) {
       unlockStartMatch();
-      setErrorMessage(insertError?.message ?? "Unable to create match.");
+      setErrorMessage(insertError?.message ?? t("Unable to create match."));
       return;
     }
 
@@ -395,7 +399,7 @@ export default function NewMatchPage() {
   if (isLoading) {
     return (
       <main className="flex flex-1 items-center justify-center px-4 py-6">
-        <p className="text-sm text-slate-600">Loading players...</p>
+        <p className="text-sm text-slate-600">{t("Loading players...")}</p>
       </main>
     );
   }
@@ -410,21 +414,21 @@ export default function NewMatchPage() {
           aria-busy="true"
           aria-live="polite"
           role="alertdialog"
-          aria-label={isSavingPast ? "Saving match" : "Starting match"}
+          aria-label={isSavingPast ? t("Saving match…") : t("Starting match…")}
         >
           <div
             className="h-10 w-10 animate-spin rounded-full border-2 border-white border-t-transparent"
             aria-hidden
           />
           <p className="text-center text-lg font-bold text-white">
-            {isSavingPast ? "Saving match…" : "Starting match…"}
+            {isSavingPast ? t("Saving match…") : t("Starting match…")}
           </p>
-          <p className="text-center text-sm text-slate-400">Please wait — do not close this page</p>
+          <p className="text-center text-sm text-slate-400">{t("Please wait — do not close this page")}</p>
         </div>
       )}
       <section className="w-full rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-        <h1 className="text-2xl font-bold text-slate-900">New Match Setup</h1>
-        <p className="mt-2 text-sm text-slate-600">Follow all steps to create a valid match lineup.</p>
+        <h1 className="text-2xl font-bold text-slate-900">{t("New Match Setup")}</h1>
+        <p className="mt-2 text-sm text-slate-600">{t("Follow all steps to create a valid match lineup.")}</p>
         {errorMessage && <p className="mt-2 text-sm text-red-600">{errorMessage}</p>}
 
         <div className="mt-5 grid grid-cols-2 gap-2">
@@ -438,7 +442,7 @@ export default function NewMatchPage() {
               entryMode === "live" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-800"
             }`}
           >
-            Play live match
+            {t("Play live match")}
           </button>
           <button
             type="button"
@@ -450,17 +454,19 @@ export default function NewMatchPage() {
               entryMode === "past" ? "bg-amber-700 text-white" : "bg-slate-100 text-slate-800"
             }`}
           >
-            Log past match
+            {t("Log past match")}
           </button>
         </div>
         {entryMode === "past" && (
           <p className="mt-2 text-xs text-amber-900/90">
-            No point-by-point data — used for record and win rate only. Shot stats stay based on tracked matches.
+            {t(
+              "No point-by-point data — used for record and win rate only. Shot stats stay based on tracked matches.",
+            )}
           </p>
         )}
 
         <div className="mt-6 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 1: Match Format</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t("Step 1: Match Format")}</p>
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
@@ -469,7 +475,7 @@ export default function NewMatchPage() {
                 matchFormat === "singles" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-900"
               }`}
             >
-              Singles
+              {t("Singles")}
             </button>
             <button
               type="button"
@@ -478,14 +484,14 @@ export default function NewMatchPage() {
                 matchFormat === "doubles" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-900"
               }`}
             >
-              Doubles
+              {t("Doubles")}
             </button>
           </div>
         </div>
 
         {entryMode === "live" && (
         <div className="mt-6 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 1B: Match Rules</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t("Step 1B: Match Rules")}</p>
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
@@ -494,7 +500,7 @@ export default function NewMatchPage() {
                 scoringType === "Standard" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-900"
               }`}
             >
-              Standard (Ad)
+              {t("Standard (Ad)")}
             </button>
             <button
               type="button"
@@ -503,7 +509,7 @@ export default function NewMatchPage() {
                 scoringType === "No-Ad" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-900"
               }`}
             >
-              No-Ad
+              {t("No-Ad")}
             </button>
           </div>
           <div className="grid grid-cols-3 gap-2">
@@ -516,7 +522,7 @@ export default function NewMatchPage() {
                   setsFormat === format ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-900"
                 }`}
               >
-                {format}
+                {t(format)}
               </button>
             ))}
           </div>
@@ -524,7 +530,9 @@ export default function NewMatchPage() {
         )}
 
         <div className="mt-6">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 2: Define Team A ({teamName})</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            {t("Step 2: Define Team A")} ({teamName})
+          </p>
           <div className="mt-2 grid grid-cols-2 gap-3">
             <button
               type="button"
@@ -533,7 +541,7 @@ export default function NewMatchPage() {
                 teamAMode === "roster" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-900"
               }`}
             >
-              Select from My Roster
+              {t("Select from My Roster")}
             </button>
             <button
               type="button"
@@ -542,11 +550,11 @@ export default function NewMatchPage() {
                 teamAMode === "guest" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-900"
               }`}
             >
-              Guest / Custom
+              {t("Guest / Custom")}
             </button>
           </div>
           <p className="mt-1 text-xs text-slate-600">
-            Select exactly {requiredPlayers} player{requiredPlayers > 1 ? "s" : ""}.
+            {t("Select exactly")} {requiredPlayers} {requiredPlayers > 1 ? t("players") : t("player")}.
           </p>
           {teamAMode === "roster" ? (
             <div className="mt-2 space-y-2">
@@ -562,7 +570,9 @@ export default function NewMatchPage() {
                     }`}
                   >
                     <span className="text-sm font-medium text-slate-800">{player.name}</span>
-                    <span className="text-xs font-semibold text-slate-600">{selected ? "Selected" : "Tap to select"}</span>
+                    <span className="text-xs font-semibold text-slate-600">
+                      {selected ? t("Selected") : t("Tap to select")}
+                    </span>
                   </button>
                 );
               })}
@@ -575,7 +585,7 @@ export default function NewMatchPage() {
                   type="text"
                   value={teamAGuestNames[index] ?? ""}
                   onChange={(event) => updateTeamAGuestName(index, event.target.value)}
-                  placeholder={`Team A Player ${index + 1}`}
+                  placeholder={`${t("Team A Player")} ${index + 1}`}
                   className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               ))}
@@ -584,7 +594,7 @@ export default function NewMatchPage() {
         </div>
 
         <div className="mt-6">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 3: Define Team B</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t("Step 3: Define Team B")}</p>
           <div className="mt-2 grid grid-cols-2 gap-3">
             <button
               type="button"
@@ -593,7 +603,7 @@ export default function NewMatchPage() {
                 teamBMode === "roster" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-900"
               }`}
             >
-              Select from Roster
+              {t("Select from Roster")}
             </button>
             <button
               type="button"
@@ -602,14 +612,14 @@ export default function NewMatchPage() {
                 teamBMode === "guest" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-900"
               }`}
             >
-              Guest / Custom
+              {t("Guest / Custom")}
             </button>
           </div>
 
           {teamBMode === "roster" ? (
             <div className="mt-3 space-y-2">
               <p className="text-xs text-slate-600">
-                Select exactly {requiredPlayers} player{requiredPlayers > 1 ? "s" : ""}.
+                {t("Select exactly")} {requiredPlayers} {requiredPlayers > 1 ? t("players") : t("player")}.
               </p>
               {selectableTeamBRoster.map((player) => {
                 const selected = teamBRosterIds.includes(player.id);
@@ -623,7 +633,9 @@ export default function NewMatchPage() {
                     }`}
                   >
                     <span className="text-sm font-medium text-slate-800">{player.name}</span>
-                    <span className="text-xs font-semibold text-slate-600">{selected ? "Selected" : "Tap to select"}</span>
+                    <span className="text-xs font-semibold text-slate-600">
+                      {selected ? t("Selected") : t("Tap to select")}
+                    </span>
                   </button>
                 );
               })}
@@ -636,7 +648,7 @@ export default function NewMatchPage() {
                   type="text"
                   value={teamBGuestNames[index] ?? ""}
                   onChange={(event) => updateTeamBGuestName(index, event.target.value)}
-                  placeholder={`Team B Player ${index + 1}`}
+                  placeholder={`${t("Team B Player")} ${index + 1}`}
                   className="w-full rounded-xl border border-slate-300 px-3 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               ))}
@@ -646,10 +658,10 @@ export default function NewMatchPage() {
 
         {entryMode === "past" && isTeamsReady && (
           <div className="mt-6 space-y-3 rounded-xl border border-amber-200 bg-amber-50/80 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">Past match result</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">{t("Past match result")}</p>
             <div>
               <label htmlFor="past-winner" className="block text-xs font-semibold text-slate-700">
-                Who won?
+                {t("Who won?")}
               </label>
               <select
                 id="past-winner"
@@ -657,14 +669,18 @@ export default function NewMatchPage() {
                 onChange={(e) => setPastWinningTeam(e.target.value as "" | "teamA" | "teamB")}
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
               >
-                <option value="">Select winner</option>
-                <option value="teamA">Team A — {teamALabel}</option>
-                <option value="teamB">Team B — {teamBLabel}</option>
+                <option value="">{t("Select winner")}</option>
+                <option value="teamA">
+                  {t("Team A —")} {teamALabel}
+                </option>
+                <option value="teamB">
+                  {t("Team B —")} {teamBLabel}
+                </option>
               </select>
             </div>
             <div>
               <label htmlFor="past-score" className="block text-xs font-semibold text-slate-700">
-                Final score
+                {t("Final score")}
               </label>
               <input
                 id="past-score"
@@ -680,8 +696,8 @@ export default function NewMatchPage() {
 
         {entryMode === "live" && isTeamsReady && (
           <div className="mt-6">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step 4: Who Is Serving First?</p>
-            <p className="mt-1 text-xs text-slate-600">Select exactly one player to start serving.</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t("Step 4: Who Is Serving First?")}</p>
+            <p className="mt-1 text-xs text-slate-600">{t("Select exactly one player to start serving.")}</p>
 
             {matchFormat === "singles" ? (
               <div className="mt-3 grid grid-cols-2 gap-3">
@@ -714,7 +730,7 @@ export default function NewMatchPage() {
                     }`}
                   >
                     <span className="block text-xs font-semibold uppercase tracking-wide opacity-80">
-                      Team {candidate.side} Player {candidate.slot}
+                      {t("Team")} {candidate.side} {t("Team Player")} {candidate.slot}
                     </span>
                     <span className="mt-1 block">{candidate.name}</span>
                   </button>
@@ -727,7 +743,8 @@ export default function NewMatchPage() {
         {isTeamsReady && (
           <div className="mt-6">
             <label htmlFor="stream-url" className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Facebook Live Stream URL <span className="font-normal normal-case text-slate-400">(optional)</span>
+              {t("Facebook Live Stream URL")}{" "}
+              <span className="font-normal normal-case text-slate-400">({t("optional")})</span>
             </label>
             <input
               id="stream-url"
@@ -739,7 +756,7 @@ export default function NewMatchPage() {
               onChange={(e) => setStreamUrl(e.target.value)}
               className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
             />
-            <p className="mt-1 text-xs text-slate-500">Shown on the public spectator page with the live score.</p>
+            <p className="mt-1 text-xs text-slate-500">{t("Shown on the public spectator page with the live score.")}</p>
           </div>
         )}
 
@@ -757,7 +774,13 @@ export default function NewMatchPage() {
               : "cursor-not-allowed bg-slate-300 text-slate-500"
           }`}
         >
-          {isStartingMatch ? "Starting…" : isSavingPast ? "Saving…" : entryMode === "live" ? "Start Match" : "Save past match"}
+          {isStartingMatch
+            ? t("Starting…")
+            : isSavingPast
+              ? t("Saving…")
+              : entryMode === "live"
+                ? t("Start Match")
+                : t("Save past match")}
         </button>
       </section>
     </main>

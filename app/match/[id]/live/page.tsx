@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
+import { useLanguage } from "@/components/LanguageContext";
 import type { ScoreState } from "@/utils/scoringEngine";
 import {
   nextServingTeamAfterPoints,
@@ -41,6 +42,7 @@ function VideoStage({
   streamUrl: string;
   children: ReactNode;
 }) {
+  const { t } = useLanguage();
   const stageRef = useRef<HTMLDivElement>(null);
   const [fullscreen, setFullscreen] = useState(false);
 
@@ -87,7 +89,7 @@ function VideoStage({
           onClick={() => void toggleFullscreen()}
           className="pointer-events-auto absolute bottom-2 right-2 z-20 rounded border border-white/25 bg-black/70 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-lg backdrop-blur-sm hover:bg-black/85 sm:bottom-3 sm:right-3 sm:px-3 sm:text-[11px]"
         >
-          {fullscreen ? "Exit full screen" : "Full screen"}
+          {fullscreen ? t("Exit full screen") : t("Full screen")}
         </button>
       </div>
     </div>
@@ -112,6 +114,7 @@ function CompactLiveScoreboard({
   servingTeam: "teamA" | "teamB" | null;
   variant?: "bar" | "overlay";
 }) {
+  const { t } = useLanguage();
   const colS = "w-5 text-center text-[10px] font-bold tabular-nums text-amber-300/95 sm:w-6 sm:text-[11px]";
   const colG = "w-5 text-center text-[10px] font-bold tabular-nums text-white sm:w-6 sm:text-[11px]";
   const colP = "w-6 text-center text-[10px] font-bold tabular-nums text-white sm:w-7 sm:text-[11px]";
@@ -135,15 +138,15 @@ function CompactLiveScoreboard({
       <div className="flex items-center gap-1 border-b border-white/10 pb-0.5">
         <span className="w-2 shrink-0" aria-hidden />
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <p className="text-[8px] font-bold uppercase tracking-[0.2em] text-white/50">Live</p>
+          <p className="text-[8px] font-bold uppercase tracking-[0.2em] text-white/50">{t("Live")}</p>
           {scoreState.isTiebreak ? (
-            <span className="rounded bg-amber-500/25 px-1 py-0.5 text-[7px] font-bold uppercase text-amber-200">TB</span>
+            <span className="rounded bg-amber-500/25 px-1 py-0.5 text-[7px] font-bold uppercase text-amber-200">{t("TB")}</span>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <span className="w-5 text-center text-[7px] font-semibold uppercase text-white/35 sm:w-6">S</span>
-          <span className="w-5 text-center text-[7px] font-semibold uppercase text-white/35 sm:w-6">G</span>
-          <span className="w-6 text-center text-[7px] font-semibold uppercase text-white/35 sm:w-7">Pt</span>
+          <span className="w-5 text-center text-[7px] font-semibold uppercase text-white/35 sm:w-6">{t("S")}</span>
+          <span className="w-5 text-center text-[7px] font-semibold uppercase text-white/35 sm:w-6">{t("G")}</span>
+          <span className="w-6 text-center text-[7px] font-semibold uppercase text-white/35 sm:w-7">{t("Pt")}</span>
         </div>
       </div>
       <div>
@@ -179,12 +182,13 @@ function CompactCompletedBar({
   scoreSummary: string;
   winningTeam: "teamA" | "teamB" | null;
 }) {
+  const { t } = useLanguage();
   return (
     <div className="w-full bg-gradient-to-b from-emerald-950/90 to-black px-2 py-2 sm:px-3 print:block">
-      <p className="text-center text-[8px] font-bold uppercase tracking-[0.25em] text-emerald-400/90">Final</p>
+      <p className="text-center text-[8px] font-bold uppercase tracking-[0.25em] text-emerald-400/90">{t("Final")}</p>
       <div className="mx-auto mt-1 flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[9px] font-semibold text-white/90 sm:text-[10px]">
         <span className={winningTeam === "teamA" ? "text-emerald-300" : ""}>{teamAName}</span>
-        <span className="text-white/35">vs</span>
+        <span className="text-white/35">{t("vs")}</span>
         <span className={winningTeam === "teamB" ? "text-emerald-300" : ""}>{teamBName}</span>
       </div>
       <p className="mt-1 text-center text-[11px] font-bold tabular-nums tracking-tight text-white sm:text-xs">{scoreSummary}</p>
@@ -204,12 +208,13 @@ function CompactCompletedOverlay({
   scoreSummary: string;
   winningTeam: "teamA" | "teamB" | null;
 }) {
+  const { t } = useLanguage();
   return (
     <div className="pointer-events-none rounded-md border border-emerald-500/35 bg-black/80 px-2 py-1.5 shadow-xl backdrop-blur-md print:hidden">
-      <p className="text-[7px] font-bold uppercase tracking-[0.2em] text-emerald-400/95">Final</p>
+      <p className="text-[7px] font-bold uppercase tracking-[0.2em] text-emerald-400/95">{t("Final")}</p>
       <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[9px] font-semibold leading-tight text-white/95">
         <span className={`max-w-[9rem] truncate ${winningTeam === "teamA" ? "text-emerald-300" : ""}`}>{teamAName}</span>
-        <span className="text-white/40">vs</span>
+        <span className="text-white/40">{t("vs")}</span>
         <span className={`max-w-[9rem] truncate ${winningTeam === "teamB" ? "text-emerald-300" : ""}`}>{teamBName}</span>
       </div>
       <p className="mt-0.5 text-[10px] font-bold tabular-nums text-white">{scoreSummary}</p>
@@ -218,6 +223,7 @@ function CompactCompletedOverlay({
 }
 
 export default function SpectatorLivePage() {
+  const { t } = useLanguage();
   const params = useParams<{ id: string }>();
   const matchId = params.id;
 
@@ -333,7 +339,7 @@ export default function SpectatorLivePage() {
   useEffect(() => {
     const client = supabase;
     if (!matchId || !client || !hasSupabaseEnv) {
-      setLoadError(!hasSupabaseEnv ? "App configuration error." : "");
+      setLoadError(!hasSupabaseEnv ? t("App configuration error.") : "");
       setReady(true);
       return;
     }
@@ -354,7 +360,7 @@ export default function SpectatorLivePage() {
 
       if (cancelled) return;
       if (matchErr || !matchData) {
-        setLoadError(matchErr?.message ?? "Match not found.");
+        setLoadError(matchErr?.message ?? t("Match not found."));
         setReady(true);
         return;
       }
@@ -398,7 +404,7 @@ export default function SpectatorLivePage() {
     return () => {
       cancelled = true;
     };
-  }, [matchId]);
+  }, [matchId, t]);
 
   useEffect(() => {
     const client = supabase;
@@ -501,7 +507,7 @@ export default function SpectatorLivePage() {
   if (!hasSupabaseEnv || !supabase) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-black px-4 text-white">
-        <p className="text-center text-lg">Configuration error.</p>
+        <p className="text-center text-lg">{t("Configuration error.")}</p>
       </main>
     );
   }
@@ -509,7 +515,7 @@ export default function SpectatorLivePage() {
   if (!ready && !loadError) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-black px-4 text-white">
-        <p className="text-xl font-bold">Loading live match…</p>
+        <p className="text-xl font-bold">{t("Loading live match…")}</p>
       </main>
     );
   }
@@ -517,7 +523,7 @@ export default function SpectatorLivePage() {
   if (loadError || !match) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-black px-4 text-white">
-        <p className="text-center text-lg text-red-300">{loadError || "Match not found."}</p>
+        <p className="text-center text-lg text-red-300">{loadError || t("Match not found.")}</p>
       </main>
     );
   }
@@ -529,11 +535,9 @@ export default function SpectatorLivePage() {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-slate-950 via-black to-black px-4 py-10 text-white">
         <div className="max-w-lg text-center">
-          <p className="text-sm font-bold uppercase tracking-[0.2em] text-slate-400">Live score</p>
-          <h1 className="mt-3 text-2xl font-black text-white md:text-3xl">This match is private</h1>
-          <p className="mt-4 text-base text-white/70">
-            The scorekeeper has turned off the public live page. Ask them to enable &quot;Public live link&quot; in the scoring app if you should follow along here.
-          </p>
+          <p className="text-sm font-bold uppercase tracking-[0.2em] text-slate-400">{t("Live score")}</p>
+          <h1 className="mt-3 text-2xl font-black text-white md:text-3xl">{t("This match is private")}</h1>
+          <p className="mt-4 text-base text-white/70">{t("Private match explanation")}</p>
         </div>
       </main>
     );
@@ -541,7 +545,7 @@ export default function SpectatorLivePage() {
 
   return (
     <main className="flex min-h-screen flex-col bg-black text-white">
-      <h1 className="sr-only">Live match spectator</h1>
+      <h1 className="sr-only">{t("Live match spectator")}</h1>
 
       {facebookStreamUrl ? (
         <>
@@ -556,7 +560,7 @@ export default function SpectatorLivePage() {
                 />
               ) : (
                 <div className="pointer-events-none rounded-md border border-emerald-500/30 bg-black/80 px-2 py-1.5 text-[9px] text-white/90 shadow-xl backdrop-blur-md print:hidden">
-                  <p className="text-[7px] font-bold uppercase tracking-widest text-emerald-400">Final</p>
+                  <p className="text-[7px] font-bold uppercase tracking-widest text-emerald-400">{t("Final")}</p>
                   <p className="mt-0.5 font-semibold leading-tight">
                     {teamAName} vs {teamBName}
                   </p>
@@ -578,10 +582,10 @@ export default function SpectatorLivePage() {
                 href={`/match/${match.id}/stats`}
                 className="inline-flex items-center justify-center rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-[11px] font-bold text-white hover:bg-white/15"
               >
-                Match stats
+                {t("Match stats")}
               </Link>
             ) : (
-              <p className="text-center text-[9px] text-white/35">Scores update automatically · read-only</p>
+              <p className="text-center text-[9px] text-white/35">{t("Scores update automatically · read-only")}</p>
             )}
           </div>
         </>
@@ -596,7 +600,7 @@ export default function SpectatorLivePage() {
             />
           ) : (
             <div className="w-full bg-zinc-950/95 px-2 py-2 text-center print:block">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-400/90">Final</p>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-400/90">{t("Final")}</p>
               <p className="mt-1 text-[10px] text-white/80">
                 {teamAName} vs {teamBName}
               </p>
@@ -607,7 +611,7 @@ export default function SpectatorLivePage() {
               href={`/match/${match.id}/stats`}
               className="inline-flex items-center justify-center rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-[11px] font-bold text-white hover:bg-white/15"
             >
-              Match stats
+              {t("Match stats")}
             </Link>
           </div>
         </>
@@ -621,16 +625,16 @@ export default function SpectatorLivePage() {
             servingTeam={servingTeam}
           />
           <p className="px-3 py-2 text-center text-[9px] text-white/35">
-            Scores update automatically · read-only
+            {t("Scores update automatically · read-only")}
           </p>
         </>
       )}
 
       <section
         className="w-full max-w-lg flex-shrink-0 border-t border-zinc-800 px-3 pb-6 pt-3 print:hidden"
-        aria-label="VIP Team Chat"
+        aria-label={t("VIP Team Chat")}
       >
-        <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-zinc-400">VIP Team Chat</h2>
+        <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-zinc-400">{t("VIP Team Chat")}</h2>
         <div className="h-72 overflow-y-auto rounded-lg bg-gray-50 px-2 py-2 text-sm text-slate-900 shadow-inner">
           {chatMessages.map((msg) => (
             <p key={msg.id} className="break-words py-0.5 leading-snug">
@@ -643,7 +647,7 @@ export default function SpectatorLivePage() {
         <div className="mt-3 space-y-2">
           <div>
             <label htmlFor="spectator-chat-nick" className="mb-1 block text-[10px] font-semibold text-zinc-500">
-              Your name
+              {t("Your name")}
             </label>
             <input
               id="spectator-chat-nick"
@@ -651,14 +655,14 @@ export default function SpectatorLivePage() {
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
               className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-2 py-1.5 text-xs text-white placeholder:text-zinc-500"
-              placeholder="Your name"
+              placeholder={t("Your name")}
               maxLength={80}
               autoComplete="off"
             />
           </div>
           <div>
             <label htmlFor="spectator-chat-msg" className="mb-1 block text-[10px] font-semibold text-zinc-500">
-              Message
+              {t("Message")}
             </label>
             <textarea
               id="spectator-chat-msg"
@@ -672,7 +676,7 @@ export default function SpectatorLivePage() {
               }}
               rows={2}
               className="w-full resize-none rounded-md border border-zinc-600 bg-zinc-900 px-2 py-2 text-sm text-white placeholder:text-zinc-500"
-              placeholder="Say something…"
+              placeholder={t("Say something…")}
               maxLength={2000}
             />
           </div>
@@ -681,7 +685,7 @@ export default function SpectatorLivePage() {
             onClick={() => void sendMessage()}
             className="w-full rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500"
           >
-            Send
+            {t("Send")}
           </button>
         </div>
       </section>
