@@ -49,7 +49,7 @@ type PointRow = {
   ending_type: "Winner" | "Unforced Error" | "Forced Error" | "Ace" | "Service Winner" | "Double Fault" | null;
 };
 
-type SortKey = "pointWinRate" | "winRate" | "matchesPlayed" | "avgServePointsWonPerGame";
+type SortKey = "pointWinRate" | "winRate" | "matchesPlayed" | "avgServePointsWonPerGame" | "aggressionRatio";
 
 type PlayerStats = {
   playerId: string;
@@ -435,10 +435,11 @@ export default function TeamStatsPage() {
               onChange={(event) => setSortKey(event.target.value as SortKey)}
               className="max-w-[min(100vw-2rem,28rem)] rounded-lg border-2 border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-900"
             >
-              <option value="pointWinRate">{t("Highest Point Win %")}</option>
-              <option value="winRate">{t("Highest Match Win %")}</option>
+              <option value="pointWinRate">{t("Point Win %")}</option>
+              <option value="winRate">{t("Match Win % (Sort)")}</option>
               <option value="matchesPlayed">{t("Most Matches Played")}</option>
-              <option value="avgServePointsWonPerGame">{t("Highest Serve Pts / Game")}</option>
+              <option value="avgServePointsWonPerGame">{t("Serve Pts / Game")}</option>
+              <option value="aggressionRatio">{t("Aggression Ratio")}</option>
             </select>
           </div>
 
