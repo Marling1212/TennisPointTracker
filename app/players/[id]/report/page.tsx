@@ -23,6 +23,33 @@ import {
   computeServeStatsForServer,
 } from "@/utils/serveAndCrunchStats";
 
+function tr(t: (key: string) => string, key: string, vars?: Record<string, string | number>): string {
+  let s = t(key);
+  if (vars) {
+    for (const [k, v] of Object.entries(vars)) {
+      s = s.replaceAll(`{${k}}`, String(v));
+    }
+  }
+  return s;
+}
+
+function translateReportStroke(stroke: string, t: (key: string) => string): string {
+  switch (stroke) {
+    case "Forehand":
+      return t("Forehand");
+    case "Backhand":
+      return t("Backhand");
+    case "Volley":
+      return t("Volley");
+    case "Overhead":
+      return t("Overhead");
+    case "Other":
+      return t("Report stroke other");
+    default:
+      return stroke;
+  }
+}
+
 type PlayerRow = {
   id: string;
   first_name: string;
@@ -60,6 +87,7 @@ type PointRow = {
 type MatchTypeFilter = "all" | "singles" | "doubles";
 
 function RatioBar({ greenPct, redPct, label }: { greenPct: number; redPct: number; label: string }) {
+  const { t } = useLanguage();
   const total = greenPct + redPct;
   const safe = total > 0 ? total : 1;
   const g = (greenPct / safe) * 100;
@@ -85,17 +113,16 @@ function RatioBar({ greenPct, redPct, label }: { greenPct: number; redPct: numbe
           </div>
         )}
       </div>
-      <p className="text-xs text-slate-500">
-        Green = winners · Red = unforced errors (share of W+UE for this stroke)
-      </p>
+      <p className="text-xs text-slate-500">{t("Report ratio bar legend")}</p>
     </div>
   );
 }
 
 function NetBaselineBar({ net, baseline }: { net: number; baseline: number }) {
+  const { t } = useLanguage();
   const total = net + baseline;
   if (total === 0) {
-    return <p className="text-sm text-slate-500">No attributed baseline or net winners in sample.</p>;
+    return <p className="text-sm text-slate-500">{t("Report no net baseline winners")}</p>;
   }
   const netPct = (net / total) * 100;
   const basePct = (baseline / total) * 100;
@@ -106,21 +133,21 @@ function NetBaselineBar({ net, baseline }: { net: number; baseline: number }) {
           className="flex items-center justify-center bg-sky-500 text-xs font-bold text-white print:bg-sky-600"
           style={{ width: `${netPct}%` }}
         >
-          {netPct >= 14 ? `Net ${Math.round(netPct)}%` : ""}
+          {netPct >= 14 ? `${t("Report label net")} ${Math.round(netPct)}%` : ""}
         </div>
         <div
           className="flex items-center justify-center bg-amber-500 text-xs font-bold text-white print:bg-amber-600"
           style={{ width: `${basePct}%` }}
         >
-          {basePct >= 14 ? `Baseline ${Math.round(basePct)}%` : ""}
+          {basePct >= 14 ? `${t("Report label baseline")} ${Math.round(basePct)}%` : ""}
         </div>
       </div>
       <div className="flex justify-between text-xs text-slate-600">
         <span>
-          Net (Volley + Overhead): <strong>{net}</strong> winner/ace shots
+          {t("Report net wins line")} <strong>{net}</strong> {t("Report winner ace shots")}
         </span>
         <span>
-          Baseline (FH + BH): <strong>{baseline}</strong> winner/ace shots
+          {t("Report baseline wins line")} <strong>{baseline}</strong> {t("Report winner ace shots")}
         </span>
       </div>
     </div>
@@ -153,17 +180,20 @@ function HoldHero({
   gamesWon: number;
   gamesPlayed: number;
 }) {
+  const { t } = useLanguage();
   return (
     <div className="mb-6 rounded-2xl border-2 border-indigo-200 bg-gradient-to-b from-indigo-50 to-white p-6 text-center print:block print:border-slate-300 print:bg-white">
-      <p className="text-xs font-bold uppercase tracking-wide text-indigo-900 print:text-slate-700">Hold rate</p>
+      <p className="text-xs font-bold uppercase tracking-wide text-indigo-900 print:text-slate-700">
+        {t("Report hold rate")}
+      </p>
       <p className="mt-2 text-5xl font-black tracking-tight text-indigo-950 print:text-slate-900">
         {holdPct === null ? "—" : `${holdPct.toFixed(0)}%`}
       </p>
       <p className="mt-2 text-sm text-slate-600">
-        <span className="font-semibold text-slate-900">{gamesWon}</span> holds /{" "}
-        <span className="font-semibold text-slate-900">{gamesPlayed}</span> service games
+        <span className="font-semibold text-slate-900">{gamesWon}</span> {t("Report holds")} /{" "}
+        <span className="font-semibold text-slate-900">{gamesPlayed}</span> {t("Report service games")}
       </p>
-      <p className="mt-1 text-xs text-slate-500">Games where you served the deciding point (see methodology note below)</p>
+      <p className="mt-1 text-xs text-slate-500">{t("Report hold methodology note")}</p>
     </div>
   );
 }
@@ -225,7 +255,7 @@ export default function PlayerScoutingReportPage() {
         .maybeSingle();
 
       if (!teamData) {
-        setErrorMessage("No team found.");
+        setErrorMessage(t("No team found."));
         setIsLoading(false);
         return;
       }
@@ -239,7 +269,7 @@ export default function PlayerScoutingReportPage() {
         .maybeSingle();
 
       if (playerError || !playerData) {
-        setErrorMessage(playerError?.message ?? "Player not found.");
+        setErrorMessage(playerError?.message ?? t("Player not found."));
         setIsLoading(false);
         return;
       }
@@ -298,7 +328,7 @@ export default function PlayerScoutingReportPage() {
     };
 
     void load();
-  }, [playerId, router]);
+  }, [playerId, router, t]);
 
   const teamName = team?.name ?? "";
 
@@ -395,7 +425,10 @@ export default function PlayerScoutingReportPage() {
   const displayName = player
     ? formatPlayerDisplayName(player.first_name, player.last_name, language)
     : t("Player");
-  const today = useMemo(() => new Date().toLocaleDateString(undefined, { dateStyle: "long" }), []);
+  const today = useMemo(
+    () => new Date().toLocaleDateString(language === "zh" ? "zh-TW" : "en-US", { dateStyle: "long" }),
+    [language],
+  );
 
   const matchTypeLabel = useMemo(
     () =>
@@ -476,46 +509,39 @@ export default function PlayerScoutingReportPage() {
         <div className="print:hidden rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
           <p className="font-semibold text-slate-900">{t("Why some sections look empty")}</p>
           <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-slate-600">
+            <li>{t("Report why bullet stroke")}</li>
             <li>
-              <strong>Stroke / net vs baseline:</strong> Needs points credited to you (action player, or server on ace/DF)
-              and usually a <strong>stroke type</strong> on the shot. Aces often have no stroke — they appear under
-              &quot;Other&quot; or only in totals.
+              <code className="rounded bg-slate-200 px-1">is_break_point</code>
+              {" · "}
+              <code className="rounded bg-slate-200 px-1">serving_team</code> — {t("Report why bullet clutch")}
             </li>
-            <li>
-              <strong>Clutch:</strong> Needs <code className="rounded bg-slate-200 px-1">is_break_point</code> and{" "}
-              <code className="rounded bg-slate-200 px-1">serving_team</code> on each point (older matches may lack them).
-            </li>
-            <li>
-              <strong>Manual match history</strong> has no point-by-point rows — only live-scored matches add data here.
-            </li>
+            <li>{t("Report why bullet manual")}</li>
           </ul>
           <p className="mt-3 text-xs text-slate-500">
-            This report sample: <strong>{dataQuality.pointsInSample}</strong> points ·{" "}
-            <strong>{dataQuality.attributedToPlayer}</strong> credited to you ·{" "}
-            <strong>{dataQuality.attributedWithStroke}</strong> with a stroke label ·{" "}
-            <strong>{dataQuality.matchesWithSide}</strong> matches with a resolved side for clutch stats.
+            {t("Report sample intro")} <strong>{dataQuality.pointsInSample}</strong> {t("Report sample points word")} ·{" "}
+            <strong>{dataQuality.attributedToPlayer}</strong> {t("Report sample credited")} ·{" "}
+            <strong>{dataQuality.attributedWithStroke}</strong> {t("Report sample stroke label")} ·{" "}
+            <strong>{dataQuality.matchesWithSide}</strong> {t("Report sample clutch matches")}
           </p>
         </div>
 
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:border-slate-300 print:shadow-none">
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">{t("Stroke breakdown")}</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Shots credited to you (action player, or server on ace/DF). Rows without a stroke type go to &quot;Other&quot;.
-          </p>
+          <p className="mt-1 text-xs text-slate-500">{t("Report stroke breakdown intro")}</p>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[480px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left">
-                  <th className="py-2 pr-3 font-semibold text-slate-700">Stroke</th>
-                  <th className="py-2 pr-3 font-semibold text-emerald-700">Winners</th>
-                  <th className="py-2 pr-3 font-semibold text-red-700">Unforced</th>
-                  <th className="py-2 font-semibold text-amber-800">Forced</th>
+                  <th className="py-2 pr-3 font-semibold text-slate-700">{t("Report col stroke")}</th>
+                  <th className="py-2 pr-3 font-semibold text-emerald-700">{t("Report col winners")}</th>
+                  <th className="py-2 pr-3 font-semibold text-red-700">{t("Report col unforced")}</th>
+                  <th className="py-2 font-semibold text-amber-800">{t("Report col forced")}</th>
                 </tr>
               </thead>
               <tbody>
                 {strokeBreakdown.map((row) => (
                   <tr key={row.stroke} className="border-b border-slate-100">
-                    <td className="py-2 font-medium text-slate-900">{row.stroke}</td>
+                    <td className="py-2 font-medium text-slate-900">{translateReportStroke(row.stroke, t)}</td>
                     <td className="py-2 text-slate-800">{row.winners}</td>
                     <td className="py-2 text-slate-800">{row.unforcedErrors}</td>
                     <td className="py-2 text-slate-800">{row.forcedErrors}</td>
@@ -528,15 +554,15 @@ export default function PlayerScoutingReportPage() {
 
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:border-slate-300 print:shadow-none">
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">{t("Weapon vs liability")}</h2>
-          <p className="mt-1 text-xs text-slate-500">Forehand & backhand: winner share vs unforced error share (same stroke).</p>
+          <p className="mt-1 text-xs text-slate-500">{t("Report weapon subtitle")}</p>
           <div className="mt-6 grid gap-8 md:grid-cols-2">
             <RatioBar
-              label="Forehand"
+              label={t("Forehand")}
               greenPct={fhTotal > 0 ? (fhWl.winners / fhTotal) * 100 : 0}
               redPct={fhTotal > 0 ? (fhWl.unforcedErrors / fhTotal) * 100 : 0}
             />
             <RatioBar
-              label="Backhand"
+              label={t("Backhand")}
               greenPct={bhTotal > 0 ? (bhWl.winners / bhTotal) * 100 : 0}
               redPct={bhTotal > 0 ? (bhWl.unforcedErrors / bhTotal) * 100 : 0}
             />
@@ -545,9 +571,7 @@ export default function PlayerScoutingReportPage() {
 
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:border-slate-300 print:shadow-none">
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">{t("Net vs baseline")}</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Where this player finishes points (winner or ace shots with stroke: Volley/Overhead vs Forehand/Backhand).
-          </p>
+          <p className="mt-1 text-xs text-slate-500">{t("Report net baseline intro")}</p>
           <div className="mt-4">
             <NetBaselineBar net={netBase.net} baseline={netBase.baseline} />
           </div>
@@ -557,8 +581,11 @@ export default function PlayerScoutingReportPage() {
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:block print:border-slate-300 print:shadow-none">
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">{t("Service performance")}</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Hold % uses game-ending points where you were <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">server_id</code> and the next point starts at{" "}
-              <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">0-0</code>, or the last point of the match.
+              {t("Report serve hold p1")}
+              <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">server_id</code>
+              {t("Report serve hold p2")}
+              <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">0-0</code>
+              {t("Report serve hold p3")}
             </p>
             <HoldHero
               holdPct={holdStats.holdPct}
@@ -566,39 +593,44 @@ export default function PlayerScoutingReportPage() {
               gamesPlayed={holdStats.serviceGamesPlayed}
             />
             <p className="mb-4 text-xs text-slate-500">
-              Point-level serve stats (you as <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">server_id</code>). Requires{" "}
-              <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">is_first_serve</code> on new logs.
+              {t("Report serve stats p1")}
+              <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">server_id</code>
+              {t("Report serve stats p2")}
+              <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">is_first_serve</code>
+              {t("Report serve stats p3")}
             </p>
             <p className="mb-4 text-xs text-slate-600">
-              Serve points: <strong>{serveStats.totalServed}</strong> · 1st: <strong>{serveStats.firstServePoints}</strong> · 2nd:{" "}
+              {t("Report serve points line")} <strong>{serveStats.totalServed}</strong> · {t("Report serve points 1st")}{" "}
+              <strong>{serveStats.firstServePoints}</strong> · {t("Report serve points 2nd")}{" "}
               <strong>{serveStats.secondServePoints}</strong>
             </p>
             <div className="grid grid-cols-1 gap-8 sm:grid-cols-3 print:max-w-none">
               <ServeDonut
-                label="1st serve in % (of your serve points)"
+                label={t("Report donut 1st serve in")}
                 value={serveStats.firstServeInPct}
                 color="#4f46e5"
               />
-              <ServeDonut label="1st serve win %" value={serveStats.firstServeWinPct} color="#059669" />
-              <ServeDonut label="2nd serve win %" value={serveStats.secondServeWinPct} color="#0ea5e9" />
+              <ServeDonut label={t("Report donut 1st serve win")} value={serveStats.firstServeWinPct} color="#059669" />
+              <ServeDonut label={t("Report donut 2nd serve win")} value={serveStats.secondServeWinPct} color="#0ea5e9" />
             </div>
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:block print:border-slate-300 print:shadow-none">
             <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">{t("Return performance")}</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Points where the opponent is serving (<code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">serving_team</code> ≠ your side). Win % = your team won the point.
+              <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">serving_team</code> —{" "}
+              {t("Report return intro")}
             </p>
             <div className="mt-6 space-y-8">
               <ReturnPctBar
-                label="1st serve return win %"
+                label={t("Report return 1st label")}
                 value={returnStats.firstReturnWinPct}
-                sub={`${returnStats.firstReturnPoints} return points on opponent's first serve`}
+                sub={tr(t, "Report return 1st sub", { n: returnStats.firstReturnPoints })}
               />
               <ReturnPctBar
-                label="2nd serve return win %"
+                label={t("Report return 2nd label")}
                 value={returnStats.secondReturnWinPct}
-                sub={`${returnStats.secondReturnPoints} return points on opponent's second serve`}
+                sub={tr(t, "Report return 2nd sub", { n: returnStats.secondReturnPoints })}
               />
             </div>
           </section>
@@ -606,33 +638,27 @@ export default function PlayerScoutingReportPage() {
 
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:border-slate-300 print:shadow-none">
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">{t("Clutch (break points)")}</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Team-relative while you are on this side: conversion when receiving break points; save rate when serving
-            facing break point.
-          </p>
+          <p className="mt-1 text-xs text-slate-500">{t("Report clutch intro")}</p>
           {(clutch.recvOpps === 0 && clutch.serveOpps === 0) && (
-            <p className="mt-2 text-xs text-amber-800">
-              No break-point rows in this sample (or side could not be resolved). Points must be logged with break-point
-              tagging after the DB migration.
-            </p>
+            <p className="mt-2 text-xs text-amber-800">{t("Report clutch no bp")}</p>
           )}
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="rounded-lg border border-slate-100 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase text-slate-500">BP conversion (receiving)</p>
+              <p className="text-xs font-semibold uppercase text-slate-500">{t("Report clutch bp conversion recv")}</p>
               <p className="mt-2 text-3xl font-black text-slate-900">
                 {clutch.conversionRate !== null ? `${(clutch.conversionRate * 100).toFixed(1)}%` : "—"}
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                {clutch.recvOpps} break point{clutch.recvOpps === 1 ? "" : "s"} faced when returning
+                {tr(t, "Report clutch bp when returning", { n: clutch.recvOpps })}
               </p>
             </div>
             <div className="rounded-lg border border-slate-100 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase text-slate-500">BP save (serving)</p>
+              <p className="text-xs font-semibold uppercase text-slate-500">{t("Report clutch bp save serve")}</p>
               <p className="mt-2 text-3xl font-black text-slate-900">
                 {clutch.saveRate !== null ? `${(clutch.saveRate * 100).toFixed(1)}%` : "—"}
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                {clutch.serveOpps} break point{clutch.serveOpps === 1 ? "" : "s"} faced when serving
+                {tr(t, "Report clutch bp when serving", { n: clutch.serveOpps })}
               </p>
             </div>
           </div>
@@ -640,34 +666,31 @@ export default function PlayerScoutingReportPage() {
 
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:block print:border-slate-300 print:shadow-none">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">
-              Pressure situations (Crunch time)
-            </h2>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">{t("Report crunch title")}</h2>
             {crunchStats.winPct !== null && crunchStats.total > 0 && crunchStats.winPct > 55 && (
               <span className="rounded-full bg-orange-100 px-3 py-1.5 text-xs font-bold text-orange-900 print:bg-orange-50">
-                🔥 Clutch Performer
+                {t("Report crunch badge hot")}
               </span>
             )}
             {crunchStats.winPct !== null && crunchStats.total > 0 && crunchStats.winPct < 45 && (
               <span className="rounded-full bg-sky-100 px-3 py-1.5 text-xs font-bold text-sky-900 print:bg-sky-50">
-                🧊 Needs Focus
+                {t("Report crunch badge cold")}
               </span>
             )}
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            Points at 30-30, 40-40, 40-Ad / Ad-40, or tiebreak scores from 4-4 onward (team wins when you are on this
-            side). Requires <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">start_score</code> on
-            logged points.
+            <code className="rounded bg-slate-100 px-1 text-[10px] print:bg-white">start_score</code> —{" "}
+            {t("Report crunch intro")}
           </p>
           <div className="mt-6 flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:justify-center sm:gap-10">
-            <ServeDonut label="Crunch time win % (team)" value={crunchStats.winPct} color="#c026d3" />
+            <ServeDonut label={t("Report crunch donut win")} value={crunchStats.winPct} color="#c026d3" />
             <div className="text-center text-sm text-slate-600 sm:pt-8 sm:text-left">
               <p>
-                <span className="font-bold text-slate-900">{crunchStats.wins}</span> wins /{" "}
-                <span className="font-bold text-slate-900">{crunchStats.total}</span> pressure points
+                <span className="font-bold text-slate-900">{crunchStats.wins}</span> {t("Report crunch win noun")} /{" "}
+                <span className="font-bold text-slate-900">{crunchStats.total}</span> {t("Report crunch pressure points")}
               </p>
               {crunchStats.total === 0 && (
-                <p className="mt-2 text-xs text-amber-800">No qualifying pressure points in this sample.</p>
+                <p className="mt-2 text-xs text-amber-800">{t("Report crunch no pressure")}</p>
               )}
             </div>
           </div>

@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { countGamesWonByTeam } from "@/utils/matchGameCounts";
 import type { MatchRules } from "@/utils/spectatorReplay";
-import { isPointAttributedToPlayer } from "@/utils/playerScoutingAggregation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
 import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
@@ -45,15 +44,7 @@ type PointRow = {
   ending_type: "Winner" | "Unforced Error" | "Forced Error" | "Ace" | "Service Winner" | "Double Fault" | null;
 };
 
-type SortKey =
-  | "totalPointsPlayed"
-  | "pointWinRate"
-  | "winRate"
-  | "matchesPlayed"
-  | "liveMatchesPlayed"
-  | "matchesWon"
-  | "avgWinnersPerGame"
-  | "avgUnforcedErrorsPerGame";
+type SortKey = "pointWinRate" | "winRate" | "matchesPlayed" | "avgServePointsWonPerGame";
 
 type PlayerStats = {
   playerId: string;
@@ -65,19 +56,13 @@ type PlayerStats = {
   liveMatchesPlayed: number;
   matchesWon: number;
   gamesWon: number;
-  totalGamesPlayed: number;
   winRate: number;
   pointsWon: number;
   pointWinRate: number;
-  aces: number;
-  serviceWinners: number;
+  /** (Aces + service winners on this player's serve) ÷ total games in tracked matches (both sides). */
+  avgServePointsWonPerGame: number;
   doubleFaults: number;
-  winners: number;
-  unforcedErrors: number;
-  forcedErrors: number;
   totalPointsPlayed: number;
-  avgWinnersPerGame: number;
-  avgUnforcedErrorsPerGame: number;
 };
 
 const formatDate = (value: string): string =>
@@ -288,7 +273,6 @@ export default function TeamStatsPage() {
         });
         const playerMatchIds = new Set(playerMatches.map((match) => match.id));
         const playerPoints = points.filter((point) => playerMatchIds.has(point.match_id));
-        const servingPoints = playerPoints.filter((point) => point.server_id === player.id);
 
         let pointsWon = 0;
         let matchesWon = 0;
@@ -315,20 +299,13 @@ export default function TeamStatsPage() {
         const totalPointsPlayed = playerPoints.length;
         const winRate = matchesPlayed === 0 ? 0 : (matchesWon / matchesPlayed) * 100;
         const pointWinRate = totalPointsPlayed === 0 ? 0 : (pointsWon / totalPointsPlayed) * 100;
-        const winners = playerPoints.filter(
-          (point) => point.ending_type === "Winner" && isPointAttributedToPlayer(point, player.id),
-        ).length;
-        const unforcedErrors = playerPoints.filter(
-          (point) => point.ending_type === "Unforced Error" && isPointAttributedToPlayer(point, player.id),
-        ).length;
-        const forcedErrors = playerPoints.filter(
-          (point) => point.ending_type === "Forced Error" && isPointAttributedToPlayer(point, player.id),
-        ).length;
 
         const liveMatchesPlayed = playerMatches.filter((m) => m.status === "In Progress").length;
 
         let gamesWon = 0;
-        let totalGamesPlayed = 0;
+        let totalGamesAcrossMatches = 0;
+        /** Ace + Service Winner only (not rally points won on serve). */
+        let acesAndServiceWinnersOnServe = 0;
         for (const match of playerMatches) {
           if (match.is_manual_entry === true) continue;
           const isTeamAPlayer = (match.team_a_name ?? "").includes(fullName);
@@ -343,11 +320,17 @@ export default function TeamStatsPage() {
             rules,
           );
           gamesWon += mySide === "teamA" ? counts.teamA : counts.teamB;
-          totalGamesPlayed += counts.totalGames;
+          totalGamesAcrossMatches += counts.totalGames;
+          for (const p of ptsInMatch) {
+            if (p.server_id !== player.id) continue;
+            const et = p.ending_type;
+            if (et !== "Ace" && et !== "Service Winner") continue;
+            if (p.point_winner_team === mySide) acesAndServiceWinnersOnServe += 1;
+          }
         }
 
-        const avgWinnersPerGame = totalGamesPlayed > 0 ? winners / totalGamesPlayed : 0;
-        const avgUnforcedErrorsPerGame = totalGamesPlayed > 0 ? unforcedErrors / totalGamesPlayed : 0;
+        const avgServePointsWonPerGame =
+          totalGamesAcrossMatches > 0 ? acesAndServiceWinnersOnServe / totalGamesAcrossMatches : 0;
 
         return {
           playerId: player.id,
@@ -359,19 +342,14 @@ export default function TeamStatsPage() {
           liveMatchesPlayed,
           matchesWon,
           gamesWon,
-          totalGamesPlayed,
           winRate,
           pointsWon,
           pointWinRate,
-          aces: servingPoints.filter((point) => point.ending_type === "Ace").length,
-          serviceWinners: servingPoints.filter((point) => point.ending_type === "Service Winner").length,
-          doubleFaults: servingPoints.filter((point) => point.ending_type === "Double Fault").length,
-          winners,
-          unforcedErrors,
-          forcedErrors,
+          avgServePointsWonPerGame,
+          doubleFaults: playerPoints.filter(
+            (point) => point.server_id === player.id && point.ending_type === "Double Fault",
+          ).length,
           totalPointsPlayed,
-          avgWinnersPerGame,
-          avgUnforcedErrorsPerGame,
         };
       })
       .sort((a, b) => (b[sortKey] as number) - (a[sortKey] as number));
@@ -416,14 +394,10 @@ export default function TeamStatsPage() {
               onChange={(event) => setSortKey(event.target.value as SortKey)}
               className="max-w-[min(100vw-2rem,28rem)] rounded-lg border-2 border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-900"
             >
-              <option value="totalPointsPlayed">{t("Most Points Played")}</option>
               <option value="pointWinRate">{t("Highest Point Win %")}</option>
               <option value="winRate">{t("Highest Match Win %")}</option>
               <option value="matchesPlayed">{t("Most Matches Played")}</option>
-              <option value="liveMatchesPlayed">{t("Most Live (In Progress) Matches")}</option>
-              <option value="matchesWon">{t("Most Matches Won")}</option>
-              <option value="avgWinnersPerGame">{t("Highest Avg Winners / Game")}</option>
-              <option value="avgUnforcedErrorsPerGame">{t("Highest Avg UE / Game")}</option>
+              <option value="avgServePointsWonPerGame">{t("Highest Avg Serve Pts / Game")}</option>
             </select>
           </div>
 
@@ -438,21 +412,15 @@ export default function TeamStatsPage() {
                   <th className="px-3 py-2 text-right">{t("Games Won")}</th>
                   <th className="px-3 py-2 text-right">{t("Pts Won")}</th>
                   <th className="px-3 py-2 text-right">{t("Pt Win %")}</th>
-                  <th className="px-3 py-2 text-right">{t("Avg W / Gm")}</th>
-                  <th className="px-3 py-2 text-right">{t("Avg UE / Gm")}</th>
-                  <th className="px-3 py-2 text-right">{t("Aces")}</th>
-                  <th className="px-3 py-2 text-right">{t("Svc W")}</th>
+                  <th className="px-3 py-2 text-right">{t("Avg serve pts won / game")}</th>
                   <th className="px-3 py-2 text-right">{t("DF")}</th>
-                  <th className="px-3 py-2 text-right">{t("Winners")}</th>
-                  <th className="px-3 py-2 text-right">{t("UE")}</th>
-                  <th className="px-3 py-2 text-right">{t("FE")}</th>
                   <th className="px-3 py-2 text-right">{t("Pts Played")}</th>
                 </tr>
               </thead>
               <tbody>
                 {playerStats.length === 0 ? (
                   <tr>
-                    <td colSpan={16} className="px-3 py-3 text-sm text-slate-700">
+                    <td colSpan={10} className="px-3 py-3 text-sm text-slate-700">
                       {t("No players found. Add players in Team Roster.")}
                     </td>
                   </tr>
@@ -473,14 +441,10 @@ export default function TeamStatsPage() {
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.gamesWon}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.pointsWon}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.pointWinRate.toFixed(1)}%</td>
-                      <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.avgWinnersPerGame.toFixed(2)}</td>
-                      <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.avgUnforcedErrorsPerGame.toFixed(2)}</td>
-                      <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.aces}</td>
-                      <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.serviceWinners}</td>
+                      <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">
+                        {row.avgServePointsWonPerGame.toFixed(2)}
+                      </td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.doubleFaults}</td>
-                      <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.winners}</td>
-                      <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.unforcedErrors}</td>
-                      <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.forcedErrors}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.totalPointsPlayed}</td>
                     </tr>
                   ))
