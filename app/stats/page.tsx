@@ -8,6 +8,7 @@ import {
   countOpeningServeGamesForPlayer,
 } from "@/utils/matchGameCounts";
 import type { MatchRules } from "@/utils/spectatorReplay";
+import { isPointAttributedToPlayer } from "@/utils/playerScoutingAggregation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
 import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
@@ -63,6 +64,7 @@ type PlayerStats = {
   winRate: number;
   pointsWon: number;
   pointWinRate: number;
+  aggressionRatio: number;
   /** (Ace + Service Winner while player served) ÷ games opened on this player's serve (first point 0–0). */
   avgServePointsWonPerGame: number;
   doubleFaults: number;
@@ -303,6 +305,31 @@ export default function TeamStatsPage() {
         const totalPointsPlayed = playerPoints.length;
         const winRate = matchesPlayed === 0 ? 0 : (matchesWon / matchesPlayed) * 100;
         const pointWinRate = totalPointsPlayed === 0 ? 0 : (pointsWon / totalPointsPlayed) * 100;
+        const winners = playerPoints.filter(
+          (point) =>
+            point.ending_type === "Winner" &&
+            isPointAttributedToPlayer(
+              {
+                action_player_id: point.action_player_id,
+                server_id: point.server_id,
+                ending_type: point.ending_type,
+              },
+              player.id,
+            ),
+        ).length;
+        const unforcedErrors = playerPoints.filter(
+          (point) =>
+            point.ending_type === "Unforced Error" &&
+            isPointAttributedToPlayer(
+              {
+                action_player_id: point.action_player_id,
+                server_id: point.server_id,
+                ending_type: point.ending_type,
+              },
+              player.id,
+            ),
+        ).length;
+        const aggressionRatio = unforcedErrors === 0 ? winners : winners / unforcedErrors;
 
         const liveMatchesPlayed = playerMatches.filter((m) => m.status === "In Progress").length;
 
@@ -358,6 +385,7 @@ export default function TeamStatsPage() {
           winRate,
           pointsWon,
           pointWinRate,
+          aggressionRatio,
           avgServePointsWonPerGame,
           doubleFaults: playerPoints.filter(
             (point) => point.server_id === player.id && point.ending_type === "Double Fault",
@@ -425,6 +453,7 @@ export default function TeamStatsPage() {
                   <th className="px-3 py-2 text-right">{t("Games Won")}</th>
                   <th className="px-3 py-2 text-right">{t("Pts Won")}</th>
                   <th className="px-3 py-2 text-right">{t("Pt Win %")}</th>
+                  <th className="px-3 py-2 text-right">{t("Aggression Ratio")}</th>
                   <th className="px-3 py-2 text-right">{t("Serve pts won / game")}</th>
                   <th className="px-3 py-2 text-right">{t("DF")}</th>
                   <th className="px-3 py-2 text-right">{t("Pts Played")}</th>
@@ -433,7 +462,7 @@ export default function TeamStatsPage() {
               <tbody>
                 {playerStats.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-3 py-3 text-sm text-slate-700">
+                    <td colSpan={11} className="px-3 py-3 text-sm text-slate-700">
                       {t("No players found. Add players in Team Roster.")}
                     </td>
                   </tr>
@@ -454,6 +483,7 @@ export default function TeamStatsPage() {
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.gamesWon}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.pointsWon}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.pointWinRate.toFixed(1)}%</td>
+                      <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.aggressionRatio.toFixed(2)}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">
                         {row.avgServePointsWonPerGame.toFixed(2)}
                       </td>
