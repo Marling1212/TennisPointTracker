@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
+import type { AppLanguage } from "@/lib/translations";
+import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
 import { resolveWinnerFromLoggedPoints } from "@/utils/matchWinnerFromPoints";
 import type { MatchRules } from "@/utils/spectatorReplay";
 
@@ -95,8 +97,13 @@ function matchRulesFromRow(match: MatchRow | null): MatchRules {
   };
 }
 
-function playerDisplayName(p: PlayerProfile): string {
+/** Canonical "first last" for DB strings and matching. */
+function canonicalPlayerName(p: PlayerProfile): string {
   return `${p.first_name} ${p.last_name}`.trim();
+}
+
+function labelForProfile(p: PlayerProfile, lang: AppLanguage): string {
+  return formatPlayerDisplayName(p.first_name, p.last_name, lang);
 }
 
 function parseTeamLabelSegments(label: string | null): string[] {
@@ -105,7 +112,7 @@ function parseTeamLabelSegments(label: string | null): string[] {
 }
 
 function namesRoughlyMatch(segment: string, p: PlayerProfile): boolean {
-  const full = playerDisplayName(p).toLowerCase();
+  const full = canonicalPlayerName(p).toLowerCase();
   const nick = (p.nickname ?? "").trim().toLowerCase();
   const seg = segment.trim().toLowerCase();
   if (!seg) return false;
@@ -126,10 +133,10 @@ function collectRosterPointPlayerIds(points: PointRow[]): string[] {
 
 function profilesOnTeamSide(teamLabel: string | null, profiles: PlayerProfile[]): PlayerProfile[] {
   if (!teamLabel?.trim()) return [];
-  return profiles.filter((p) => (teamLabel ?? "").includes(playerDisplayName(p)));
+  return profiles.filter((p) => (teamLabel ?? "").includes(canonicalPlayerName(p)));
 }
 
-function orderDoublesLineup(segments: string[], teamProfiles: PlayerProfile[]): LineupSlot[] {
+function orderDoublesLineup(segments: string[], teamProfiles: PlayerProfile[], lang: AppLanguage): LineupSlot[] {
   const used = new Set<string>();
   const slots: LineupSlot[] = [];
 
@@ -137,7 +144,7 @@ function orderDoublesLineup(segments: string[], teamProfiles: PlayerProfile[]): 
     const match = teamProfiles.find((p) => !used.has(p.id) && namesRoughlyMatch(seg, p));
     if (match) {
       used.add(match.id);
-      slots.push({ id: match.id, label: playerDisplayName(match) });
+      slots.push({ id: match.id, label: labelForProfile(match, lang) });
     } else {
       slots.push({ id: null, label: seg });
     }
@@ -146,7 +153,7 @@ function orderDoublesLineup(segments: string[], teamProfiles: PlayerProfile[]): 
   const rest = teamProfiles.filter((p) => !used.has(p.id)).sort((a, b) => a.id.localeCompare(b.id));
   for (const p of rest) {
     if (slots.length >= 2) break;
-    slots.push({ id: p.id, label: playerDisplayName(p) });
+    slots.push({ id: p.id, label: labelForProfile(p, lang) });
   }
 
   while (slots.length < 2 && segments[slots.length]) {
@@ -165,11 +172,12 @@ function buildDoublesLineup(
   profiles: PlayerProfile[],
   points: PointRow[],
   side: "teamA" | "teamB",
+  lang: AppLanguage,
 ): LineupSlot[] {
   const segments = parseTeamLabelSegments(teamLabel);
   const onSide = profilesOnTeamSide(teamLabel, profiles);
   if (segments.length >= 2) {
-    return orderDoublesLineup(segments, onSide);
+    return orderDoublesLineup(segments, onSide, lang);
   }
 
   const inferredIds = new Set<string>();
@@ -195,26 +203,29 @@ function buildDoublesLineup(
     .sort((a, b) => a.id.localeCompare(b.id));
 
   if (byInference.length >= 2) {
-    return byInference.slice(0, 2).map((p) => ({ id: p.id, label: playerDisplayName(p) }));
+    return byInference.slice(0, 2).map((p) => ({ id: p.id, label: labelForProfile(p, lang) }));
   }
 
   if (onSide.length >= 2) {
-    return onSide.slice(0, 2).map((p) => ({ id: p.id, label: playerDisplayName(p) }));
+    return onSide.slice(0, 2).map((p) => ({ id: p.id, label: labelForProfile(p, lang) }));
   }
 
   if (byInference.length === 1 && onSide.length === 1) {
     const a = byInference[0];
     const b = onSide.find((p) => p.id !== a.id);
-    if (b) return [{ id: a.id, label: playerDisplayName(a) }, { id: b.id, label: playerDisplayName(b) }].sort((x, y) => x.label.localeCompare(y.label));
-    return [{ id: a.id, label: playerDisplayName(a) }, { id: null, label: "—" }];
+    if (b)
+      return [{ id: a.id, label: labelForProfile(a, lang) }, { id: b.id, label: labelForProfile(b, lang) }].sort((x, y) =>
+        x.label.localeCompare(y.label),
+      );
+    return [{ id: a.id, label: labelForProfile(a, lang) }, { id: null, label: "—" }];
   }
 
   if (byInference.length === 1) {
-    return [{ id: byInference[0].id, label: playerDisplayName(byInference[0]) }, { id: null, label: "—" }];
+    return [{ id: byInference[0].id, label: labelForProfile(byInference[0], lang) }, { id: null, label: "—" }];
   }
 
   if (onSide.length === 1) {
-    return [{ id: onSide[0].id, label: playerDisplayName(onSide[0]) }, { id: null, label: "—" }];
+    return [{ id: onSide[0].id, label: labelForProfile(onSide[0], lang) }, { id: null, label: "—" }];
   }
 
   return [
@@ -393,7 +404,7 @@ function formatStatCell(
 }
 
 export default function MatchStatsPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const matchId = params.id;
@@ -518,13 +529,15 @@ export default function MatchStatsPage() {
   const isDoubles = match?.match_type === "Doubles";
 
   const lineupA = useMemo(
-    () => (isDoubles ? buildDoublesLineup(match?.team_a_name ?? null, playerProfiles, points, "teamA") : []),
-    [isDoubles, match?.team_a_name, playerProfiles, points],
+    () =>
+      isDoubles ? buildDoublesLineup(match?.team_a_name ?? null, playerProfiles, points, "teamA", language) : [],
+    [isDoubles, match?.team_a_name, playerProfiles, points, language],
   );
 
   const lineupB = useMemo(
-    () => (isDoubles ? buildDoublesLineup(match?.team_b_name ?? null, playerProfiles, points, "teamB") : []),
-    [isDoubles, match?.team_b_name, playerProfiles, points],
+    () =>
+      isDoubles ? buildDoublesLineup(match?.team_b_name ?? null, playerProfiles, points, "teamB", language) : [],
+    [isDoubles, match?.team_b_name, playerProfiles, points, language],
   );
 
   const splitA = useMemo(

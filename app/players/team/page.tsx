@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
+import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
 
 type TeamRow = {
   id: string;
@@ -21,7 +22,7 @@ type PlayerRow = {
 };
 
 export default function TeamRosterPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const router = useRouter();
   const [team, setTeam] = useState<TeamRow | null>(null);
   const [players, setPlayers] = useState<PlayerRow[]>([]);
@@ -158,27 +159,54 @@ export default function TeamRosterPage() {
         <p className="mt-2 text-sm text-slate-300">{t("Add players to your team and manage your roster.")}</p>
 
         <form onSubmit={handleAddPlayer} className="mt-5 space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-4">
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">{t("First Name")}</label>
-            <input
-              value={firstName}
-              onChange={(event) => setFirstName(event.target.value)}
-              required
-              className="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-slate-300 focus:outline-none"
-              placeholder="Alex"
-            />
-          </div>
+          {language === "zh" ? (
+            <>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">{t("Last Name")}</label>
+                <input
+                  value={lastName}
+                  onChange={(event) => setLastName(event.target.value)}
+                  required
+                  className="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-slate-300 focus:outline-none"
+                  placeholder="陳"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">{t("First Name")}</label>
+                <input
+                  value={firstName}
+                  onChange={(event) => setFirstName(event.target.value)}
+                  required
+                  className="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-slate-300 focus:outline-none"
+                  placeholder="大文"
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">{t("First Name")}</label>
+                <input
+                  value={firstName}
+                  onChange={(event) => setFirstName(event.target.value)}
+                  required
+                  className="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-slate-300 focus:outline-none"
+                  placeholder="Alex"
+                />
+              </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">{t("Last Name")}</label>
-            <input
-              value={lastName}
-              onChange={(event) => setLastName(event.target.value)}
-              required
-              className="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-slate-300 focus:outline-none"
-              placeholder="Chen"
-            />
-          </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">{t("Last Name")}</label>
+                <input
+                  value={lastName}
+                  onChange={(event) => setLastName(event.target.value)}
+                  required
+                  className="w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-slate-300 focus:outline-none"
+                  placeholder="Chen"
+                />
+              </div>
+            </>
+          )}
 
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">{t("Nickname")}</label>
@@ -227,7 +255,7 @@ export default function TeamRosterPage() {
               >
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-white">
-                    {player.first_name} {player.last_name}
+                    {formatPlayerDisplayName(player.first_name, player.last_name, language)}
                   </p>
                   <p className="text-xs text-slate-400">
                     @{player.nickname} ·{" "}

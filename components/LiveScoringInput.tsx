@@ -14,6 +14,7 @@ import {
 import { hydrateLiveScoringFromPoints } from "@/utils/hydrateLiveScoringFromPoints";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
+import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
 
 type TeamSide = "A" | "B";
 type Phase =
@@ -33,7 +34,11 @@ type MatchFormat = "singles" | "doubles";
 
 type CourtPlayer = {
   id: string;
+  /** Canonical "first last" for team labels / DB (Western order). */
   name: string;
+  /** When set (roster players), used for zh-TW 「姓名」 display. */
+  firstName?: string;
+  lastName?: string;
   nickname?: string;
   side: TeamSide;
   slot?: number;
@@ -496,7 +501,7 @@ type LiveScoringInputProps = {
 };
 
 export default function LiveScoringInput({ setupData, matchData, matchId, matchStatus }: LiveScoringInputProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const router = useRouter();
   const config = buildConfig(setupData, matchData);
   const [state, dispatch] = useReducer(createReducer(config), config, buildInitialState);
@@ -516,8 +521,19 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
   const [isFirstServe, setIsFirstServe] = useState(true);
   const hasTriggeredFinishRef = useRef(false);
 
-  const getDisplayPlayerName = (player: CourtPlayer): string =>
-    nameMode === "nickname" ? player.nickname?.trim() || player.name : player.name;
+  const getDisplayPlayerName = (player: CourtPlayer): string => {
+    if (nameMode === "nickname") {
+      return player.nickname?.trim() || resolveRosterDisplayName(player);
+    }
+    return resolveRosterDisplayName(player);
+  };
+
+  const resolveRosterDisplayName = (player: CourtPlayer): string => {
+    if (player.firstName !== undefined && player.lastName !== undefined) {
+      return formatPlayerDisplayName(player.firstName, player.lastName, language);
+    }
+    return player.name;
+  };
 
   const currentServerPlayer = [...config.teamAPlayers, ...config.teamBPlayers].find(
     (player) => player.id === state.present.currentServerId,

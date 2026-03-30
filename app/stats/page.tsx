@@ -8,6 +8,7 @@ import type { MatchRules } from "@/utils/spectatorReplay";
 import { isPointAttributedToPlayer } from "@/utils/playerScoutingAggregation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
+import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
 
 type ProfileRow = {
   id: string;
@@ -57,6 +58,8 @@ type SortKey =
 type PlayerStats = {
   playerId: string;
   fullName: string;
+  firstName: string;
+  lastName: string;
   nickname: string;
   matchesPlayed: number;
   liveMatchesPlayed: number;
@@ -87,7 +90,7 @@ const formatDate = (value: string): string =>
   });
 
 export default function TeamStatsPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const router = useRouter();
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [players, setPlayers] = useState<PlayerRow[]>([]);
@@ -349,6 +352,8 @@ export default function TeamStatsPage() {
         return {
           playerId: player.id,
           fullName,
+          firstName: player.first_name,
+          lastName: player.last_name,
           nickname: player.nickname,
           matchesPlayed,
           liveMatchesPlayed,
@@ -456,7 +461,9 @@ export default function TeamStatsPage() {
                   playerStats.map((row) => (
                     <tr key={row.playerId} className="border-b-2 border-slate-300 last:border-b-0">
                       <td className="px-3 py-3">
-                        <p className="text-sm font-bold text-slate-900">{row.fullName}</p>
+                        <p className="text-sm font-bold text-slate-900">
+                          {formatPlayerDisplayName(row.firstName, row.lastName, language)}
+                        </p>
                         <p className="text-xs text-slate-600">@{row.nickname}</p>
                       </td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.matchesPlayed}</td>

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
+import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
 import { isPointAttributedToPlayer, playerSideInMatch } from "@/utils/playerScoutingAggregation";
 
 type PlayerRow = {
@@ -46,7 +47,7 @@ type MatchTypeFilter = "all" | "singles" | "doubles";
 type TimeframeFilter = "all_time" | "last_30_days";
 
 export default function PlayerCardPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const playerId = params.id;
@@ -272,7 +273,9 @@ export default function PlayerCardPage() {
       <section className="w-full rounded-2xl border border-slate-700 bg-slate-800 p-5 shadow-xl">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{t("Player Analytics Dashboard")}</p>
         <h1 className="mt-1 text-2xl font-bold text-white">
-          {player ? `${player.first_name} ${player.last_name}` : t("Unknown Player")}
+          {player
+            ? formatPlayerDisplayName(player.first_name, player.last_name, language)
+            : t("Unknown Player")}
         </h1>
         {player && (
           <p className="mt-1 text-sm text-slate-300">

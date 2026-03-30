@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
+import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
 import {
   aggregateStrokeBreakdown,
   clutchBreakPointRates,
@@ -187,7 +188,7 @@ function ReturnPctBar({ label, value, sub }: { label: string; value: number | nu
 }
 
 export default function PlayerScoutingReportPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const playerId = params.id;
@@ -391,7 +392,9 @@ export default function PlayerScoutingReportPage() {
     [filteredPoints, playerSideByMatchId],
   );
 
-  const displayName = player ? `${player.first_name} ${player.last_name}`.trim() : t("Player");
+  const displayName = player
+    ? formatPlayerDisplayName(player.first_name, player.last_name, language)
+    : t("Player");
   const today = useMemo(() => new Date().toLocaleDateString(undefined, { dateStyle: "long" }), []);
 
   const matchTypeLabel = useMemo(

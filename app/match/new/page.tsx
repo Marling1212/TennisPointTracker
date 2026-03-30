@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
+import { formatPlayerDisplayName, playerCanonicalName } from "@/lib/playerNameFormat";
 
 type MatchFormat = "singles" | "doubles";
 type OpponentMode = "roster" | "guest";
@@ -14,6 +15,9 @@ type Side = "A" | "B";
 type CourtPlayer = {
   id: string;
   name: string;
+  /** Set for roster players so UI can show 姓 名 in zh */
+  firstName?: string;
+  lastName?: string;
   nickname?: string;
   side: Side;
   slot: number;
@@ -29,7 +33,7 @@ type RosterPlayerRow = {
 type EntryMode = "live" | "past";
 
 export default function NewMatchPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const router = useRouter();
   const [roster, setRoster] = useState<CourtPlayer[]>([]);
   const [teamId, setTeamId] = useState<string | null>(null);
@@ -107,7 +111,9 @@ export default function NewMatchPage() {
 
       const mapped: CourtPlayer[] = ((playerData ?? []) as RosterPlayerRow[]).map((player, index) => ({
         id: player.id,
-        name: `${player.first_name} ${player.last_name}`,
+        name: playerCanonicalName(player.first_name, player.last_name),
+        firstName: player.first_name,
+        lastName: player.last_name,
         nickname: player.nickname ?? undefined,
         side: "A",
         slot: index + 1,
@@ -195,6 +201,8 @@ export default function NewMatchPage() {
             return {
               id,
               name: player.name,
+              firstName: player.firstName,
+              lastName: player.lastName,
               nickname: player.nickname,
               side: "A",
               slot: index + 1,
@@ -218,6 +226,8 @@ export default function NewMatchPage() {
             return {
               id,
               name: player.name,
+              firstName: player.firstName,
+              lastName: player.lastName,
               nickname: player.nickname,
               side: "B",
               slot: index + 1,
@@ -233,6 +243,11 @@ export default function NewMatchPage() {
           }),
         );
 
+  const displayCourtPlayerName = (p: CourtPlayer) =>
+    p.firstName !== undefined && p.lastName !== undefined
+      ? formatPlayerDisplayName(p.firstName, p.lastName, language)
+      : p.name;
+
   const serverCandidates = [...teamAPlayers, ...teamBPlayers];
   const hasValidInitialServer = serverCandidates.some((candidate) => candidate.id === initialServerId);
   const canStartLive = isTeamsReady && hasValidInitialServer;
@@ -241,10 +256,14 @@ export default function NewMatchPage() {
     isTeamsReady &&
     (pastWinningTeam === "teamA" || pastWinningTeam === "teamB") &&
     pastScoreSummary.trim().length > 0;
-  const teamALabel =
+  const teamALabelCanonical =
     teamAPlayers.map((player) => player.name).join(" / ") || (teamAMode === "roster" ? teamName : t("Guest Team A"));
-  const teamBLabel =
+  const teamBLabelCanonical =
     teamBPlayers.map((player) => player.name).join(" / ") || (teamBMode === "roster" ? `${teamName} ${t("Roster B")}` : t("Guest Team B"));
+  const teamALabelDisplay =
+    teamAPlayers.map(displayCourtPlayerName).join(" / ") || (teamAMode === "roster" ? teamName : t("Guest Team A"));
+  const teamBLabelDisplay =
+    teamBPlayers.map(displayCourtPlayerName).join(" / ") || (teamBMode === "roster" ? `${teamName} ${t("Roster B")}` : t("Guest Team B"));
 
   const savePastMatch = async () => {
     if (!canSavePast) return;
@@ -263,8 +282,8 @@ export default function NewMatchPage() {
       return;
     }
 
-    const teamAName = teamAPlayers.map((player) => player.name).join(" / ") || teamALabel;
-    const teamBName = teamBPlayers.map((player) => player.name).join(" / ") || teamBLabel;
+    const teamAName = teamAPlayers.map((player) => player.name).join(" / ") || teamALabelCanonical;
+    const teamBName = teamBPlayers.map((player) => player.name).join(" / ") || teamBLabelCanonical;
     const minimalSetup = {
       matchFormat,
       scoringType,
@@ -344,8 +363,8 @@ export default function NewMatchPage() {
       matchFormat,
       scoringType,
       setsFormat,
-      teamAName: teamAPlayers.map((player) => player.name).join(" / ") || teamALabel,
-      teamBName: teamBPlayers.map((player) => player.name).join(" / ") || teamBLabel,
+      teamAName: teamAPlayers.map((player) => player.name).join(" / ") || teamALabelCanonical,
+      teamBName: teamBPlayers.map((player) => player.name).join(" / ") || teamBLabelCanonical,
       teamAPlayers,
       teamBPlayers,
       teamAMode,
@@ -569,7 +588,7 @@ export default function NewMatchPage() {
                       selected ? "bg-blue-50 ring-2 ring-blue-400" : "bg-slate-50 ring-1 ring-slate-200"
                     }`}
                   >
-                    <span className="text-sm font-medium text-slate-800">{player.name}</span>
+                    <span className="text-sm font-medium text-slate-800">{displayCourtPlayerName(player)}</span>
                     <span className="text-xs font-semibold text-slate-600">
                       {selected ? t("Selected") : t("Tap to select")}
                     </span>
@@ -632,7 +651,7 @@ export default function NewMatchPage() {
                       selected ? "bg-emerald-50 ring-2 ring-emerald-400" : "bg-slate-50 ring-1 ring-slate-200"
                     }`}
                   >
-                    <span className="text-sm font-medium text-slate-800">{player.name}</span>
+                    <span className="text-sm font-medium text-slate-800">{displayCourtPlayerName(player)}</span>
                     <span className="text-xs font-semibold text-slate-600">
                       {selected ? t("Selected") : t("Tap to select")}
                     </span>
@@ -671,10 +690,10 @@ export default function NewMatchPage() {
               >
                 <option value="">{t("Select winner")}</option>
                 <option value="teamA">
-                  {t("Team A —")} {teamALabel}
+                  {t("Team A —")} {teamALabelDisplay}
                 </option>
                 <option value="teamB">
-                  {t("Team B —")} {teamBLabel}
+                  {t("Team B —")} {teamBLabelDisplay}
                 </option>
               </select>
             </div>
@@ -712,7 +731,7 @@ export default function NewMatchPage() {
                         : "bg-slate-100 text-slate-900"
                     }`}
                   >
-                    {candidate.name}
+                    {displayCourtPlayerName(candidate)}
                   </button>
                 ))}
               </div>
@@ -732,7 +751,7 @@ export default function NewMatchPage() {
                     <span className="block text-xs font-semibold uppercase tracking-wide opacity-80">
                       {t("Team")} {candidate.side} {t("Team Player")} {candidate.slot}
                     </span>
-                    <span className="mt-1 block">{candidate.name}</span>
+                    <span className="mt-1 block">{displayCourtPlayerName(candidate)}</span>
                   </button>
                 ))}
               </div>
