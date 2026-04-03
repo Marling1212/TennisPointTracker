@@ -57,6 +57,8 @@ type SetupData = {
   teamAPlayers?: CourtPlayer[];
   teamBPlayers?: CourtPlayer[];
   initialServer?: { id?: string; name?: string; side?: TeamSide };
+  /** Doubles + Tiebreak Only: player on the receiving team (for point 1) who serves points 2–3. */
+  doublesTiebreakFirstReceiverServerId?: string;
 };
 
 type MatchRow = {
@@ -163,10 +165,26 @@ const buildConfig = (setupData: unknown, matchData?: MatchRow): MatchConfig => {
   const matchFormat = setup.matchFormat ?? (teamAPlayers.length === 2 && teamBPlayers.length === 2 ? "doubles" : "singles");
   const scoringType = matchData?.scoring_type ?? setup.scoringType ?? "Standard";
   const setsFormat = matchData?.sets_format ?? setup.setsFormat ?? "Best of 3 Sets";
-  const knownServers: Partial<Record<TeamSide, string>> =
+  let knownServers: Partial<Record<TeamSide, string>> =
     matchFormat === "singles"
       ? { A: teamAPlayers[0]?.id, B: teamBPlayers[0]?.id }
       : { [initialServerSide]: initialServerId };
+
+  if (
+    matchFormat === "doubles" &&
+    setsFormat === "Tiebreak Only" &&
+    setup.doublesTiebreakFirstReceiverServerId
+  ) {
+    const recvSide = otherTeam(initialServerSide);
+    const recvPlayers = recvSide === "A" ? teamAPlayers : teamBPlayers;
+    const valid = recvPlayers.some((p) => p.id === setup.doublesTiebreakFirstReceiverServerId);
+    if (valid) {
+      knownServers = {
+        ...knownServers,
+        [recvSide]: setup.doublesTiebreakFirstReceiverServerId,
+      };
+    }
+  }
 
   return {
     matchFormat,
@@ -549,9 +567,17 @@ type LiveScoringInputProps = {
   matchId?: string;
   /** From DB; used to redirect off /play when the match is already finished. */
   matchStatus?: string | null;
+  /** When true (URL `?edit=1`), completed matches load on /play so points can be fixed. */
+  reopenForCorrection?: boolean;
 };
 
-export default function LiveScoringInput({ setupData, matchData, matchId, matchStatus }: LiveScoringInputProps) {
+export default function LiveScoringInput({
+  setupData,
+  matchData,
+  matchId,
+  matchStatus,
+  reopenForCorrection = false,
+}: LiveScoringInputProps) {
   const { t, language } = useLanguage();
   const router = useRouter();
   const config = buildConfig(setupData, matchData);
@@ -566,11 +592,120 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
   const [streamUrlLocal, setStreamUrlLocal] = useState<string | null>(matchData?.stream_url ?? null);
   const [streamUrlSaving, setStreamUrlSaving] = useState(false);
   const [isInitializing, setIsInitializing] = useState(() =>
-    Boolean(matchId && matchStatus !== "Completed"),
+    Boolean(matchId && (matchStatus !== "Completed" || reopenForCorrection)),
   );
+  /** True when the match has at least one row in `points` (for DB-backed undo after reload or in correction mode). */
+  const [hasDbPoints, setHasDbPoints] = useState(false);
   /** False after a 1st-serve fault until the point is logged; used for `is_first_serve` in DB. */
   const [isFirstServe, setIsFirstServe] = useState(true);
   const hasTriggeredFinishRef = useRef(false);
+  const configRef = useRef(config);
+  configRef.current = config;
+  const reopenStatusUpdatedRef = useRef(false);
+
+  const fetchAndHydratePoints = useCallback(
+    async (options?: { showLoading?: boolean }) => {
+      const showLoading = options?.showLoading !== false;
+      const c = configRef.current;
+      const client = supabase;
+      if (!matchId || !client || !hasSupabaseEnv) {
+        setIsInitializing(false);
+        setHasDbPoints(false);
+        return;
+      }
+      if (showLoading) setIsInitializing(true);
+      setPointSaveError("");
+      const { data: rows, error } = await client
+        .from("points")
+        .select("point_winner_team, server_id, serving_team, created_at")
+        .eq("match_id", matchId)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        setPointSaveError(error.message);
+        setIsInitializing(false);
+        return;
+      }
+
+      const list = rows ?? [];
+      setHasDbPoints(list.length > 0);
+
+      if (list.length === 0) {
+        const initial = buildInitialState(c);
+        dispatch({
+          type: "HYDRATE",
+          payload: {
+            present: { ...initial.present, draft: { serveSequence: [] } },
+            knownServers: initial.knownServers,
+          },
+        });
+        hasTriggeredFinishRef.current = false;
+        setIsFirstServe(true);
+        setIsInitializing(false);
+        return;
+      }
+
+      const hydrated = hydrateLiveScoringFromPoints(
+        {
+          matchFormat: c.matchFormat,
+          teamAPlayers: c.teamAPlayers,
+          teamBPlayers: c.teamBPlayers,
+          scoringType: c.scoringType,
+          setsFormat: c.setsFormat,
+          initialServerId: c.initialServerId,
+          initialServerSide: c.initialServerSide,
+          knownServers: c.knownServers,
+        },
+        list,
+      );
+
+      dispatch({
+        type: "HYDRATE",
+        payload: {
+          present: {
+            ...hydrated.present,
+            draft: { serveSequence: [] },
+          } as PresentState,
+          knownServers: hydrated.knownServers,
+        },
+      });
+      hasTriggeredFinishRef.current = false;
+      setIsFirstServe(true);
+      setIsInitializing(false);
+    },
+    [matchId, dispatch],
+  );
+
+  const removeLastPointFromDatabase = useCallback(async () => {
+    if (!matchId || !supabase || !hasSupabaseEnv) return;
+    setIsSavingPoint(true);
+    setPointSaveError("");
+    const { data: last, error: selErr } = await supabase
+      .from("points")
+      .select("id")
+      .eq("match_id", matchId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (selErr) {
+      setPointSaveError(selErr.message);
+      setIsSavingPoint(false);
+      return;
+    }
+    if (!last) {
+      setHasDbPoints(false);
+      setIsSavingPoint(false);
+      return;
+    }
+    const { error: delErr } = await supabase.from("points").delete().eq("id", last.id);
+    if (delErr) {
+      setPointSaveError(delErr.message);
+      setIsSavingPoint(false);
+      return;
+    }
+    await fetchAndHydratePoints({ showLoading: false });
+    setIsSavingPoint(false);
+  }, [matchId, fetchAndHydratePoints]);
 
   const getDisplayPlayerName = (player: CourtPlayer): string => {
     if (nameMode === "nickname") {
@@ -643,80 +778,31 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
   }, [matchId, spectatorPublic]);
 
   useEffect(() => {
-    if (matchStatus === "Completed" && matchId) {
+    if (matchStatus === "Completed" && matchId && !reopenForCorrection) {
       setIsInitializing(false);
       router.replace(`/match/${matchId}/stats`);
     }
-  }, [matchId, matchStatus, router]);
+  }, [matchId, matchStatus, router, reopenForCorrection]);
 
   useEffect(() => {
-    const client = supabase;
-    if (!matchId || !client || !hasSupabaseEnv) {
+    if (!reopenForCorrection || !matchId || !supabase || !hasSupabaseEnv) return;
+    if (matchStatus !== "Completed") return;
+    if (reopenStatusUpdatedRef.current) return;
+    reopenStatusUpdatedRef.current = true;
+    void supabase.from("matches").update({ status: "In Progress" }).eq("id", matchId);
+  }, [reopenForCorrection, matchId, matchStatus]);
+
+  useEffect(() => {
+    if (!matchId || !hasSupabaseEnv) {
       setIsInitializing(false);
       return;
     }
-    if (matchStatus === "Completed") return;
+    if (matchStatus === "Completed" && !reopenForCorrection) return;
 
-    let cancelled = false;
+    void fetchAndHydratePoints();
 
-    const run = async () => {
-      setIsInitializing(true);
-      const { data: rows, error } = await client
-        .from("points")
-        .select("point_winner_team, server_id, serving_team, created_at")
-        .eq("match_id", matchId)
-        .order("created_at", { ascending: true });
-
-      if (cancelled) return;
-
-      if (error) {
-        setPointSaveError(error.message);
-        setIsInitializing(false);
-        return;
-      }
-
-      const list = rows ?? [];
-      if (list.length === 0) {
-        setIsInitializing(false);
-        return;
-      }
-
-      const hydrated = hydrateLiveScoringFromPoints(
-        {
-          matchFormat: config.matchFormat,
-          teamAPlayers: config.teamAPlayers,
-          teamBPlayers: config.teamBPlayers,
-          scoringType: config.scoringType,
-          setsFormat: config.setsFormat,
-          initialServerId: config.initialServerId,
-          initialServerSide: config.initialServerSide,
-          knownServers: config.knownServers,
-        },
-        list,
-      );
-
-      dispatch({
-        type: "HYDRATE",
-        payload: {
-          present: {
-            ...hydrated.present,
-            draft: { serveSequence: [] },
-          } as PresentState,
-          knownServers: hydrated.knownServers,
-        },
-      });
-      setIsFirstServe(true);
-      setIsInitializing(false);
-    };
-
-    void run();
-
-    return () => {
-      cancelled = true;
-    };
-    // Intentionally run once per match id / status — config comes from props for this mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate once when opening scoring for this match
-  }, [matchId, matchStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate when opening scoring / correction mode
+  }, [matchId, matchStatus, reopenForCorrection, fetchAndHydratePoints]);
 
   const finishMatch = useCallback(async () => {
     const summaries = state.present.completedSetScores;
@@ -755,6 +841,11 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
   }, [finishMatch, state.present.scoreState]);
 
   const isInputDisabled = state.present.scoreState.isMatchOver || isSavingPoint || isInitializing;
+  /** Prefer removing the last DB row when points are persisted so Undo matches saved data. */
+  const undoDisabled =
+    isSavingPoint ||
+    isInitializing ||
+    (matchId && hasDbPoints ? false : state.history.length === 0);
 
   const logPointToDatabase = useCallback(
     async (
@@ -792,6 +883,7 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
       if (error) {
         throw new Error(error.message);
       }
+      setHasDbPoints(true);
     },
     [matchId, state.present.currentServerId, state.present.currentServerSide],
   );
@@ -998,6 +1090,12 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-slate-950/90 px-4 text-center">
           <p className="text-lg font-black text-white">{t("Loading match…")}</p>
           <p className="text-sm text-slate-400">{t("Restoring score from saved points")}</p>
+        </div>
+      )}
+      {reopenForCorrection && !isInitializing && (
+        <div className="shrink-0 border-b border-amber-500/40 bg-amber-950/90 px-3 py-2 text-center">
+          <p className="text-xs font-semibold text-amber-100">{t("Score correction mode")}</p>
+          <p className="text-[11px] text-amber-200/90">{t("Undo removes last saved point")}</p>
         </div>
       )}
       <div className="flex items-center justify-between border-b border-slate-700 bg-slate-900/95 px-3 py-2">
@@ -1380,10 +1478,14 @@ export default function LiveScoringInput({ setupData, matchData, matchId, matchS
         type="button"
         className="absolute bottom-2 left-1/2 z-10 w-36 -translate-x-1/2 rounded-xl border-2 border-red-200 bg-red-600 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
         onClick={() => {
+          if (matchId && hasSupabaseEnv && hasDbPoints) {
+            void removeLastPointFromDatabase();
+            return;
+          }
           dispatch({ type: "UNDO" });
           setIsFirstServe(true);
         }}
-        disabled={state.history.length === 0 || isInputDisabled}
+        disabled={undoDisabled}
       >
         {t("Undo")}
       </button>

@@ -4,13 +4,14 @@ import { supabase } from "@/utils/supabase/client";
 
 type MatchPlayPageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ setup?: string }>;
+  searchParams: Promise<{ setup?: string; edit?: string }>;
 };
 
 export default async function MatchPlayPage({ params, searchParams }: MatchPlayPageProps) {
   const { id } = await params;
   const query = await searchParams;
   const setupRaw = query.setup;
+  const reopenForCorrection = query.edit === "1" || query.edit === "true";
 
   let setupData: unknown;
   if (setupRaw) {
@@ -55,6 +56,7 @@ export default async function MatchPlayPage({ params, searchParams }: MatchPlayP
         matchData={matchData}
         matchId={id}
         matchStatus={matchData?.status ?? null}
+        reopenForCorrection={reopenForCorrection}
       />
     </main>
   );

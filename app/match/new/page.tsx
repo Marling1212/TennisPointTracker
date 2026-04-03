@@ -50,6 +50,8 @@ export default function NewMatchPage() {
   const [teamBRosterIds, setTeamBRosterIds] = useState<string[]>([]);
   const [teamBGuestNames, setTeamBGuestNames] = useState<string[]>(["", ""]);
   const [initialServerId, setInitialServerId] = useState<string>("");
+  /** Doubles + Tiebreak Only: receiving team’s player who serves points 2–3. */
+  const [doublesTiebreakFirstReceiverServerId, setDoublesTiebreakFirstReceiverServerId] = useState<string>("");
   const [entryMode, setEntryMode] = useState<EntryMode>("live");
   const [pastWinningTeam, setPastWinningTeam] = useState<"" | "teamA" | "teamB">("");
   const [pastScoreSummary, setPastScoreSummary] = useState("");
@@ -249,8 +251,29 @@ export default function NewMatchPage() {
       : p.name;
 
   const serverCandidates = [...teamAPlayers, ...teamBPlayers];
+
+  const receivingTeamPlayers = useMemo(() => {
+    const initial = serverCandidates.find((c) => c.id === initialServerId);
+    if (!initial) return [];
+    const recvSide = initial.side === "A" ? "B" : "A";
+    return serverCandidates.filter((c) => c.side === recvSide);
+  }, [serverCandidates, initialServerId]);
+
+  useEffect(() => {
+    if (setsFormat !== "Tiebreak Only" || matchFormat !== "doubles") return;
+    setDoublesTiebreakFirstReceiverServerId((prev) => {
+      const ok = receivingTeamPlayers.some((p) => p.id === prev);
+      if (ok) return prev;
+      return receivingTeamPlayers[0]?.id ?? "";
+    });
+  }, [setsFormat, matchFormat, receivingTeamPlayers]);
+
   const hasValidInitialServer = serverCandidates.some((candidate) => candidate.id === initialServerId);
-  const canStartLive = isTeamsReady && hasValidInitialServer;
+  const needsTiebreakDoublesReceiverPick = setsFormat === "Tiebreak Only" && matchFormat === "doubles";
+  const hasValidTiebreakDoublesReceiver =
+    !needsTiebreakDoublesReceiverPick ||
+    receivingTeamPlayers.some((p) => p.id === doublesTiebreakFirstReceiverServerId);
+  const canStartLive = isTeamsReady && hasValidInitialServer && hasValidTiebreakDoublesReceiver;
   const canSavePast =
     entryMode === "past" &&
     isTeamsReady &&
@@ -374,6 +397,9 @@ export default function NewMatchPage() {
         name: initialServer.name,
         side: initialServer.side,
       },
+      ...(needsTiebreakDoublesReceiverPick && doublesTiebreakFirstReceiverServerId
+        ? { doublesTiebreakFirstReceiverServerId }
+        : {}),
     };
 
     let insertedMatch: { id: string } | null = null;
@@ -754,6 +780,34 @@ export default function NewMatchPage() {
                     <span className="mt-1 block">{displayCourtPlayerName(candidate)}</span>
                   </button>
                 ))}
+              </div>
+            )}
+
+            {setsFormat === "Tiebreak Only" && matchFormat === "doubles" && (
+              <div className="mt-6 border-t border-slate-200 pt-5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {t("Step 5: Tiebreak doubles — receiving team")}
+                </p>
+                <p className="mt-1 text-xs text-slate-600">{t("Tiebreak doubles receiver hint")}</p>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  {receivingTeamPlayers.map((candidate) => (
+                    <button
+                      key={candidate.id}
+                      type="button"
+                      onClick={() => setDoublesTiebreakFirstReceiverServerId(candidate.id)}
+                      className={`rounded-2xl px-4 py-4 text-left text-sm font-bold ${
+                        doublesTiebreakFirstReceiverServerId === candidate.id
+                          ? "bg-violet-600 text-white ring-2 ring-violet-300"
+                          : "bg-slate-100 text-slate-900"
+                      }`}
+                    >
+                      <span className="block text-xs font-semibold uppercase tracking-wide opacity-80">
+                        {t("Team")} {candidate.side} {t("Team Player")} {candidate.slot}
+                      </span>
+                      <span className="mt-1 block">{displayCourtPlayerName(candidate)}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>

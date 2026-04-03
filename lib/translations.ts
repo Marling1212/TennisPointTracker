@@ -95,6 +95,13 @@ export const translations: Record<AppLanguage, Record<string, string>> = {
     "Team B —": "Team B —",
     "Final score": "Final score",
     "Step 4: Who Is Serving First?": "Step 4: Who Is Serving First?",
+    "Step 5: Tiebreak doubles — receiving team": "Step 5: Tiebreak doubles — receiving team",
+    "Tiebreak doubles receiver hint":
+      "Point 1 is served by the player you chose above. Choose which opponent starts the next two points (standard doubles tiebreak order).",
+    "Correct score": "Correct score",
+    "Score correction mode": "Score correction mode",
+    "Undo removes last saved point":
+      "Undo removes the last saved point from the database, then restores the score. Use after the match if the observer mis-tapped.",
     "Select exactly one player to start serving.": "Select exactly one player to start serving.",
     "Team Player": "Team Player",
     "Facebook Live Stream URL": "Facebook Live Stream URL",
@@ -452,6 +459,13 @@ export const translations: Record<AppLanguage, Record<string, string>> = {
     "Team B —": "隊伍 B —",
     "Final score": "最終比分",
     "Step 4: Who Is Serving First?": "步驟 4：誰先發球？",
+    "Step 5: Tiebreak doubles — receiving team": "步驟 5：搶七雙打 — 接發球方誰先發",
+    "Tiebreak doubles receiver hint":
+      "第 1 分由上方所選球員發球。請選對方哪一位先發接下來的兩分（標準雙打搶七發球順序）。",
+    "Correct score": "修正比分",
+    "Score correction mode": "修正比分模式",
+    "Undo removes last saved point":
+      "復原會從資料庫刪除最後一筆分數並還原狀態。若比賽已結束但最後幾分誤登，請使用此功能。",
     "Select exactly one player to start serving.": "請選一位發球員。",
     "Team Player": "隊伍球員",
     "Facebook Live Stream URL": "Facebook 直播網址",
