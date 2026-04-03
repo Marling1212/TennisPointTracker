@@ -22,6 +22,7 @@ import {
   computeReturnStats,
   computeServeStatsForServer,
 } from "@/utils/serveAndCrunchStats";
+import type { MatchRules } from "@/utils/spectatorReplay";
 
 function tr(t: (key: string) => string, key: string, vars?: Record<string, string | number>): string {
   let s = t(key);
@@ -67,6 +68,8 @@ type MatchRow = {
   team_a_name: string | null;
   team_b_name: string | null;
   is_manual_entry: boolean | null;
+  scoring_type: "Standard" | "No-Ad" | null;
+  sets_format: "1 Set" | "Best of 3 Sets" | "Tiebreak Only" | null;
 };
 
 type PointRow = {
@@ -277,7 +280,7 @@ export default function PlayerScoutingReportPage() {
 
       const { data: matchesData, error: matchesError } = await supabase
         .from("matches")
-        .select("id, match_type, team_a_name, team_b_name, is_manual_entry")
+        .select("id, match_type, team_a_name, team_b_name, is_manual_entry, scoring_type, sets_format")
         .eq("team_id", teamData.id)
         .order("created_at", { ascending: false });
 
@@ -353,6 +356,17 @@ export default function PlayerScoutingReportPage() {
     return map;
   }, [filteredMatches, teamName, playerFullName]);
 
+  const matchRulesByMatchId = useMemo(() => {
+    const map = new Map<string, MatchRules>();
+    for (const m of filteredMatches) {
+      map.set(m.id, {
+        scoringType: m.scoring_type === "No-Ad" ? "No-Ad" : "Standard",
+        setsFormat: m.sets_format ?? "Best of 3 Sets",
+      });
+    }
+    return map;
+  }, [filteredMatches]);
+
   const filteredPoints = useMemo(() => {
     return points.filter((p) => filteredMatchIds.has(p.match_id));
   }, [points, filteredMatchIds]);
@@ -408,8 +422,8 @@ export default function PlayerScoutingReportPage() {
   );
 
   const holdStats = useMemo(
-    () => computeHoldStats(filteredPoints, playerId, playerSideByMatchId),
-    [filteredPoints, playerId, playerSideByMatchId],
+    () => computeHoldStats(filteredPoints, playerId, playerSideByMatchId, matchRulesByMatchId),
+    [filteredPoints, playerId, playerSideByMatchId, matchRulesByMatchId],
   );
 
   const returnStats = useMemo(

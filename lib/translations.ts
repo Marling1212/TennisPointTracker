@@ -316,7 +316,7 @@ export const translations: Record<AppLanguage, Record<string, string>> = {
     "Report holds": "holds",
     "Report service games": "service games",
     "Report hold methodology note":
-      "Games where you served the deciding point (see methodology notes below).",
+      "Games where you served the deciding point (see below). Tiebreak is not counted as a service game.",
     "Report why bullet stroke":
       "Stroke / net vs baseline: Needs points credited to you (action player, or server on ace/DF) and usually a stroke type on the shot. Aces often have no stroke — they appear under \"Other\" or only in totals.",
     "Report why bullet clutch":
@@ -341,7 +341,7 @@ export const translations: Record<AppLanguage, Record<string, string>> = {
       "Where this player finishes points (winner or ACE shots with stroke: Volley/Overhead vs Forehand/Backhand).",
     "Report serve hold p1": "Hold % uses game-ending points where you were ",
     "Report serve hold p2": " and the next point starts at ",
-    "Report serve hold p3": ", or the last point of the match.",
+    "Report serve hold p3": ", or the last point of the match. Tiebreak points are excluded.",
     "Report serve stats p1": "Point-level serve stats (you as ",
     "Report serve stats p2": "). Requires ",
     "Report serve stats p3": " on new logs.",
@@ -674,7 +674,7 @@ export const translations: Record<AppLanguage, Record<string, string>> = {
     "Report hold rate": "保發率",
     "Report holds": "次保發",
     "Report service games": "個發球局",
-    "Report hold methodology note": "由你發出該局決勝分的局（詳見下方說明）。",
+    "Report hold methodology note": "由你發出該局決勝分的局（詳見下方）。搶七不計入發球局。",
     "Report why bullet stroke":
       "擊球分布／網前與底線：需有分數歸於你（擊球員，或發球員在 ACE／雙誤時），且通常需有擊球方式。ACE 常無擊球標籤——會落在「其他」或僅計入總數。",
     "Report why bullet clutch":
@@ -697,7 +697,7 @@ export const translations: Record<AppLanguage, Record<string, string>> = {
       "此球員在哪些位置結束分數（具擊球標籤的致勝球或 ACE：網前截擊／扣殺 對 正／反拍）。",
     "Report serve hold p1": "保發率使用「該局最後一分由你擔任 ",
     "Report serve hold p2": "、且下一分從 ",
-    "Report serve hold p3": " 開始」的局，或比賽最後一分。",
+    "Report serve hold p3": " 開始」的局，或比賽最後一分。搶七分不計入。",
     "Report serve stats p1": "逐分發球數據（你為 ",
     "Report serve stats p2": "）。新紀錄需有 ",
     "Report serve stats p3": "。",

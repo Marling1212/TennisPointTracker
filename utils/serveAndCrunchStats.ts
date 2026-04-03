@@ -1,3 +1,6 @@
+import { calculateNextScore } from "@/utils/scoringEngine";
+import { initialScoreState, type MatchRules } from "@/utils/spectatorReplay";
+
 /** Deuce / advantage / tiebreak-after-4-4 style pressure starts (matches `formatStartScoreForPointLog`). */
 export function isCrunchTimeStartScore(raw: string | null | undefined): boolean {
   if (!raw?.trim()) return false;
@@ -151,9 +154,14 @@ export type HoldStatsResult = {
   holdPct: number | null;
 };
 
+const defaultMatchRules: MatchRules = { scoringType: "Standard", setsFormat: "Best of 3 Sets" };
+
 /**
  * Game-ending point: last point of the match, or next chronological point has start_score "0-0".
  * Count only those where this player was `server_id`; hold = player's team won the point.
+ *
+ * Tiebreak points are excluded: `calculateNextScore` replay marks `isTiebreak` — those points are not
+ * anyone's "service game" for hold % (incl. tiebreak-only matches and the deciding tiebreak).
  */
 export function computeHoldStats(
   points: Array<{
@@ -166,6 +174,7 @@ export function computeHoldStats(
   }>,
   playerId: string,
   playerSideByMatchId: Map<string, "teamA" | "teamB">,
+  matchRulesByMatchId?: Map<string, MatchRules>,
 ): HoldStatsResult {
   const byMatch = new Map<string, (typeof points)[number][]>();
   for (const p of points) {
@@ -188,14 +197,25 @@ export function computeHoldStats(
       return a.id.localeCompare(b.id);
     });
 
+    const rules = matchRulesByMatchId?.get(matchId) ?? defaultMatchRules;
+    const isNoAd = rules.scoringType === "No-Ad";
+    let state = initialScoreState(rules.setsFormat);
+
     for (let i = 0; i < pts.length; i++) {
+      const cur = pts[i];
+      if (!cur.point_winner_team) continue;
+
+      const stateBefore = state;
       const next = pts[i + 1];
       const nextStartsFreshGame = next?.start_score?.trim() === "0-0";
       const isGameEnd = i === pts.length - 1 || nextStartsFreshGame;
-      if (!isGameEnd) continue;
-      if (pts[i].server_id !== playerId) continue;
-      played += 1;
-      if (pts[i].point_winner_team === side) won += 1;
+
+      if (isGameEnd && !stateBefore.isTiebreak && cur.server_id === playerId) {
+        played += 1;
+        if (cur.point_winner_team === side) won += 1;
+      }
+
+      state = calculateNextScore(state, cur.point_winner_team, isNoAd, rules.setsFormat);
     }
   }
 
