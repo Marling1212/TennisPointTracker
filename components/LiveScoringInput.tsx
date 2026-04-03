@@ -826,6 +826,9 @@ export default function LiveScoringInput({
   }, [matchId, router, state.present.completedSetScores, state.present.scoreState.sets]);
 
   useEffect(() => {
+    if (reopenForCorrection) {
+      return;
+    }
     if (!state.present.scoreState.isMatchOver || hasTriggeredFinishRef.current) {
       return;
     }
@@ -838,7 +841,7 @@ export default function LiveScoringInput({
     return () => {
       clearTimeout(timer);
     };
-  }, [finishMatch, state.present.scoreState]);
+  }, [finishMatch, reopenForCorrection, state.present.scoreState]);
 
   const isInputDisabled = state.present.scoreState.isMatchOver || isSavingPoint || isInitializing;
   /** Prefer removing the last DB row when points are persisted so Undo matches saved data. */
@@ -1476,7 +1479,9 @@ export default function LiveScoringInput({
 
       <button
         type="button"
-        className="absolute bottom-2 left-1/2 z-10 w-36 -translate-x-1/2 rounded-xl border-2 border-red-200 bg-red-600 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
+        className={`absolute bottom-2 left-1/2 w-36 -translate-x-1/2 rounded-xl border-2 border-red-200 bg-red-600 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50 ${
+          reopenForCorrection ? "z-[35]" : "z-10"
+        }`}
         onClick={() => {
           if (matchId && hasSupabaseEnv && hasDbPoints) {
             void removeLastPointFromDatabase();
@@ -1515,7 +1520,11 @@ export default function LiveScoringInput({
       )}
 
       {state.present.phase === "match-over" && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/95 p-4">
+        <div
+          className={`absolute inset-0 flex items-center justify-center bg-slate-950/95 p-4 pb-16 ${
+            reopenForCorrection ? "z-[30]" : "z-20"
+          }`}
+        >
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 text-center shadow-xl">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t("Match Complete")}</p>
             <h3 className="mt-2 text-xl font-bold text-slate-900">
@@ -1524,7 +1533,20 @@ export default function LiveScoringInput({
             <p className="mt-2 text-sm text-slate-700">
               {t("Final sets:")} {state.present.scoreState.sets.teamA} - {state.present.scoreState.sets.teamB}
             </p>
-            <p className="mt-3 text-xs text-slate-500">{t("Redirecting to match stats...")}</p>
+            {reopenForCorrection ? (
+              <>
+                <p className="mt-3 text-xs text-slate-600">{t("Correction match over hint")}</p>
+                <button
+                  type="button"
+                  className="mt-4 w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white"
+                  onClick={() => void finishMatch()}
+                >
+                  {t("Save and go to stats")}
+                </button>
+              </>
+            ) : (
+              <p className="mt-3 text-xs text-slate-500">{t("Redirecting to match stats...")}</p>
+            )}
           </div>
         </div>
       )}

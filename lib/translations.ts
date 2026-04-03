@@ -102,6 +102,9 @@ export const translations: Record<AppLanguage, Record<string, string>> = {
     "Score correction mode": "Score correction mode",
     "Undo removes last saved point":
       "Undo removes the last saved point from the database, then restores the score. Use after the match if the observer mis-tapped.",
+    "Correction match over hint":
+      "Tap Undo below to remove mistaken points. When the score is correct, save and return to stats.",
+    "Save and go to stats": "Save and go to stats",
     "Select exactly one player to start serving.": "Select exactly one player to start serving.",
     "Team Player": "Team Player",
     "Facebook Live Stream URL": "Facebook Live Stream URL",
@@ -466,6 +469,9 @@ export const translations: Record<AppLanguage, Record<string, string>> = {
     "Score correction mode": "修正比分模式",
     "Undo removes last saved point":
       "復原會從資料庫刪除最後一筆分數並還原狀態。若比賽已結束但最後幾分誤登，請使用此功能。",
+    "Correction match over hint":
+      "請按下方「復原」刪除誤登的分數。比分正確後，再按鈕儲存並返回統計。",
+    "Save and go to stats": "儲存並返回統計",
     "Select exactly one player to start serving.": "請選一位發球員。",
     "Team Player": "隊伍球員",
     "Facebook Live Stream URL": "Facebook 直播網址",
