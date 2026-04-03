@@ -1,4 +1,5 @@
 import { calculateNextScore, type ScoreState } from "@/utils/scoringEngine";
+import { tiebreakPointsCompleted, tiebreakServingSideForPointIndex } from "@/utils/tiebreakServing";
 
 export type SpectatorPoint = {
   id: string;
@@ -33,25 +34,69 @@ export function replayPointsToScoreState(points: SpectatorPoint[], rules: MatchR
   return state;
 }
 
+const teamKeyToSide = (t: "teamA" | "teamB"): "A" | "B" => (t === "teamA" ? "A" : "B");
+const sideToTeamKey = (s: "A" | "B"): "teamA" | "teamB" => (s === "A" ? "teamA" : "teamB");
+
 /**
- * Who is serving the *next* point (after all logged points). Uses last point's `serving_team`
- * and whether the last point ended a game/set.
+ * Who is serving the *next* point (after all logged points). Uses `serving_team` on points,
+ * standard game changeovers, and tiebreak 1-then-2 serve rotation when mid–tie-break.
  */
 export function nextServingTeamAfterPoints(points: SpectatorPoint[], rules: MatchRules): "teamA" | "teamB" | null {
   if (points.length === 0) return null;
-  const full = replayPointsToScoreState(points, rules);
+
+  const isNoAd = rules.scoringType === "No-Ad";
+  let state = initialScoreState(rules.setsFormat);
+  let tiebreakFirst: "A" | "B" | undefined;
+
+  for (const pt of points) {
+    if (!pt.point_winner_team || state.isMatchOver) continue;
+
+    const previousScore = state;
+    state = calculateNextScore(state, pt.point_winner_team, isNoAd, rules.setsFormat);
+
+    const gameEnded =
+      state.games.teamA !== previousScore.games.teamA ||
+      state.games.teamB !== previousScore.games.teamB ||
+      state.sets.teamA !== previousScore.sets.teamA ||
+      state.sets.teamB !== previousScore.sets.teamB;
+
+    if (previousScore.isTiebreak && !state.isTiebreak) {
+      tiebreakFirst = undefined;
+    }
+
+    if (rules.setsFormat === "Tiebreak Only" && tiebreakFirst === undefined && pt.serving_team) {
+      tiebreakFirst = teamKeyToSide(pt.serving_team);
+    }
+
+    if (gameEnded && !previousScore.isTiebreak && state.isTiebreak && pt.serving_team) {
+      tiebreakFirst = teamKeyToSide(pt.serving_team === "teamA" ? "teamB" : "teamA");
+    }
+  }
+
+  const full = state;
   if (full.isMatchOver) return null;
 
   const last = points[points.length - 1];
   if (!last.serving_team) return null;
 
   const beforeLast = replayPointsToScoreState(points.slice(0, -1), rules);
-  const gameEnded =
+  const lastPointEndedGameOrSet =
     full.games.teamA !== beforeLast.games.teamA ||
     full.games.teamB !== beforeLast.games.teamB ||
     full.sets.teamA !== beforeLast.sets.teamA ||
     full.sets.teamB !== beforeLast.sets.teamB;
 
-  if (!gameEnded) return last.serving_team;
-  return last.serving_team === "teamA" ? "teamB" : "teamA";
+  if (lastPointEndedGameOrSet) {
+    return last.serving_team === "teamA" ? "teamB" : "teamA";
+  }
+
+  if (full.isTiebreak) {
+    if (tiebreakFirst === undefined) {
+      tiebreakFirst = teamKeyToSide(last.serving_team);
+    }
+    const k = tiebreakPointsCompleted(full) + 1;
+    return sideToTeamKey(tiebreakServingSideForPointIndex(tiebreakFirst, k));
+  }
+
+  return last.serving_team;
 }

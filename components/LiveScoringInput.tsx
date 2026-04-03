@@ -12,6 +12,10 @@ import {
   type ScoreState,
 } from "@/utils/scoringEngine";
 import { hydrateLiveScoringFromPoints } from "@/utils/hydrateLiveScoringFromPoints";
+import {
+  tiebreakPointsCompleted,
+  tiebreakServingSideForPointIndex,
+} from "@/utils/tiebreakServing";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
 import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
@@ -102,6 +106,8 @@ type PresentState = {
   currentServerSide: TeamSide;
   awaitingServerSide?: TeamSide;
   scoreState: ScoreState;
+  /** Side that served point 1 of the current tiebreak (set at 6–6 or Tiebreak Only start). */
+  tiebreakFirstServerSide?: TeamSide;
   /** Finished set scores in order, e.g. ["6-4", "2-6"] — used for match score_summary. */
   completedSetScores: string[];
 };
@@ -182,6 +188,7 @@ const buildInitialState = (config: MatchConfig): ReducerState => ({
     draft: { serveSequence: [] },
     currentServerId: config.initialServerId,
     currentServerSide: config.initialServerSide,
+    tiebreakFirstServerSide: config.setsFormat === "Tiebreak Only" ? config.initialServerSide : undefined,
     scoreState: {
       points: { teamA: 0, teamB: 0 },
       games: { teamA: 0, teamB: 0 },
@@ -231,6 +238,11 @@ const finalizePoint = (state: ReducerState, payload: FinalPointPayload): Reducer
   const finishedSide = state.present.currentServerSide;
   const finishedServerId = state.present.currentServerId;
 
+  let tiebreakFirstServerSide = state.present.tiebreakFirstServerSide;
+  if (previousScore.isTiebreak && !nextScore.isTiebreak) {
+    tiebreakFirstServerSide = undefined;
+  }
+
   let nextKnownServers = state.knownServers;
   let nextServerSide = state.present.currentServerSide;
   let nextServerId = state.present.currentServerId;
@@ -251,6 +263,44 @@ const finalizePoint = (state: ReducerState, payload: FinalPointPayload): Reducer
       }
     } else {
       nextServerId = teamPlayers(nextServerSide, state.config)[0]?.id ?? finishedServerId;
+    }
+
+    if (!previousScore.isTiebreak && nextScore.isTiebreak) {
+      tiebreakFirstServerSide = nextServerSide;
+    }
+  }
+
+  if (nextScore.isTiebreak && !nextScore.isMatchOver) {
+    const firstSide =
+      tiebreakFirstServerSide ??
+      (state.config.setsFormat === "Tiebreak Only" ? state.present.currentServerSide : undefined);
+    if (firstSide !== undefined) {
+      tiebreakFirstServerSide = firstSide;
+      const totalCompleted = tiebreakPointsCompleted(nextScore);
+      const nextPointNumber = totalCompleted + 1;
+      nextServerSide = tiebreakServingSideForPointIndex(firstSide, nextPointNumber);
+
+      if (!gameEnded) {
+        if (nextServerSide === finishedSide) {
+          nextServerId = finishedServerId;
+        } else if (state.config.matchFormat === "doubles") {
+          const nextTeamPlayers = teamPlayers(nextServerSide, state.config);
+          if (nextTeamPlayers.length >= 2) {
+            const prevOnNext = nextKnownServers[nextServerSide];
+            if (prevOnNext !== undefined) {
+              const partner = nextTeamPlayers.find((p) => p.id !== prevOnNext);
+              nextServerId = partner?.id ?? prevOnNext;
+              nextKnownServers = { ...nextKnownServers, [nextServerSide]: nextServerId };
+            } else {
+              nextServerId = nextTeamPlayers[0]?.id ?? finishedServerId;
+            }
+          } else {
+            nextServerId = nextTeamPlayers[0]?.id ?? finishedServerId;
+          }
+        } else {
+          nextServerId = teamPlayers(nextServerSide, state.config)[0]?.id ?? finishedServerId;
+        }
+      }
     }
   }
 
@@ -275,8 +325,9 @@ const finalizePoint = (state: ReducerState, payload: FinalPointPayload): Reducer
       phase: isMatchOver ? "match-over" : needsIntercept ? "awaiting-server-selection" : "serve-first",
       draft: { serveSequence: [] },
       scoreState: nextScore,
+      tiebreakFirstServerSide,
       currentServerSide: nextServerSide,
-      currentServerId: gameEnded ? (needsIntercept ? state.present.currentServerId : nextServerId) : state.present.currentServerId,
+      currentServerId: gameEnded ? (needsIntercept ? state.present.currentServerId : nextServerId) : nextServerId,
       awaitingServerSide: isMatchOver ? undefined : needsIntercept ? nextServerSide : undefined,
     },
     payload,

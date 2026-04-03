@@ -3,6 +3,7 @@ import {
   getCompletedSetScoreLine,
   type ScoreState,
 } from "@/utils/scoringEngine";
+import { tiebreakPointsCompleted, tiebreakServingSideForPointIndex } from "@/utils/tiebreakServing";
 
 export type DbPointForHydration = {
   point_winner_team: "teamA" | "teamB" | null;
@@ -73,6 +74,7 @@ export type HydratedPresentSlice = {
   currentServerId: string;
   currentServerSide: TeamSide;
   awaitingServerSide?: TeamSide;
+  tiebreakFirstServerSide?: TeamSide;
   scoreState: ScoreState;
   completedSetScores: string[];
 };
@@ -90,6 +92,8 @@ export function hydrateLiveScoringFromPoints(
   let currentServerSide = config.initialServerSide;
   let knownServers: Partial<Record<TeamSide, string>> = { ...config.knownServers };
   const isNoAd = config.scoringType === "No-Ad";
+  let tiebreakFirstServerSide: TeamSide | undefined =
+    config.setsFormat === "Tiebreak Only" ? config.initialServerSide : undefined;
 
   let phase: HydratedPresentSlice["phase"] = "serve-first";
   let awaitingServerSide: TeamSide | undefined;
@@ -118,6 +122,10 @@ export function hydrateLiveScoringFromPoints(
     let nextServerSide = currentServerSide;
     let nextServerId = currentServerId;
 
+    if (previousScore.isTiebreak && !nextScore.isTiebreak) {
+      tiebreakFirstServerSide = undefined;
+    }
+
     if (gameEnded) {
       nextKnownServers = { ...knownServers, [finishedSide]: finishedServerId };
       nextServerSide = otherTeam(finishedSide);
@@ -134,6 +142,44 @@ export function hydrateLiveScoringFromPoints(
         }
       } else {
         nextServerId = teamPlayers(nextServerSide, config)[0]?.id ?? finishedServerId;
+      }
+
+      if (!previousScore.isTiebreak && nextScore.isTiebreak) {
+        tiebreakFirstServerSide = nextServerSide;
+      }
+    }
+
+    if (nextScore.isTiebreak && !nextScore.isMatchOver) {
+      const firstSide =
+        tiebreakFirstServerSide ??
+        (config.setsFormat === "Tiebreak Only" ? currentServerSide : undefined);
+      if (firstSide !== undefined) {
+        tiebreakFirstServerSide = firstSide;
+        const totalCompleted = tiebreakPointsCompleted(nextScore);
+        const nextPointNumber = totalCompleted + 1;
+        nextServerSide = tiebreakServingSideForPointIndex(firstSide, nextPointNumber);
+
+        if (!gameEnded) {
+          if (nextServerSide === finishedSide) {
+            nextServerId = finishedServerId;
+          } else if (config.matchFormat === "doubles") {
+            const nextTeamPlayers = teamPlayers(nextServerSide, config);
+            if (nextTeamPlayers.length >= 2) {
+              const prevOnNext = nextKnownServers[nextServerSide];
+              if (prevOnNext !== undefined) {
+                const partner = nextTeamPlayers.find((p) => p.id !== prevOnNext);
+                nextServerId = partner?.id ?? prevOnNext;
+                nextKnownServers = { ...nextKnownServers, [nextServerSide]: nextServerId };
+              } else {
+                nextServerId = nextTeamPlayers[0]?.id ?? finishedServerId;
+              }
+            } else {
+              nextServerId = nextTeamPlayers[0]?.id ?? finishedServerId;
+            }
+          } else {
+            nextServerId = teamPlayers(nextServerSide, config)[0]?.id ?? finishedServerId;
+          }
+        }
       }
     }
 
@@ -157,7 +203,8 @@ export function hydrateLiveScoringFromPoints(
           phase: "match-over",
           draft: { serveSequence: [] },
           currentServerSide: gameEnded ? nextServerSide : currentServerSide,
-          currentServerId: gameEnded ? (needsIntercept ? finishedServerId : nextServerId) : currentServerId,
+          currentServerId: gameEnded ? (needsIntercept ? finishedServerId : nextServerId) : nextServerId,
+          tiebreakFirstServerSide,
           scoreState,
           completedSetScores,
         },
@@ -178,6 +225,10 @@ export function hydrateLiveScoringFromPoints(
     } else {
       phase = "serve-first";
       awaitingServerSide = undefined;
+      if (nextScore.isTiebreak && !nextScore.isMatchOver) {
+        currentServerSide = nextServerSide;
+        currentServerId = nextServerId;
+      }
     }
   }
 
@@ -188,6 +239,7 @@ export function hydrateLiveScoringFromPoints(
       currentServerId,
       currentServerSide,
       awaitingServerSide,
+      tiebreakFirstServerSide,
       scoreState,
       completedSetScores,
     },
