@@ -64,7 +64,7 @@ type PlayerStats = {
   pointsWon: number;
   pointWinRate: number;
   aggressionRatio: number;
-  /** (Ace + Service Winner credited to player via action_player_id, excl. tie-break) ÷ regular service games. */
+  /** (Ace + SW with match-card attribution, excl. tie-break) ÷ regular service games. */
   avgServePointsWonPerGame: number;
   /** Raw sum for serve stat (numerator / denominator); same average can round identically with different pairs. */
   servePtsNumerator: number;
@@ -353,7 +353,7 @@ export default function TeamStatsPage() {
         const liveMatchesPlayed = playerMatches.filter((m) => m.status === "In Progress").length;
 
         let gamesWon = 0;
-        /** Ace + Service Winner (action_player_id) in non–tie-break games ÷ regular service games (server_id). */
+        /** Ace + SW (action or server fallback) in non–tie-break games ÷ regular service games (server_id). */
         let servePointsWonRegular = 0;
         let serviceGamesRegular = 0;
         for (const match of playerMatches) {

@@ -1,3 +1,4 @@
+import { isPointAttributedToPlayer } from "@/utils/playerScoutingAggregation";
 import { calculateNextScore, type ScoreState } from "@/utils/scoringEngine";
 import { initialScoreState, type MatchRules } from "@/utils/spectatorReplay";
 
@@ -40,7 +41,7 @@ function sortPointsForReplay<T extends PointForOpeningServeCount>(points: T[]): 
 /**
  * (Ace + Service Winner) ÷ service games, **regular games only** (no tie-break).
  *
- * - **Numerator:** Ace or Service Winner with `action_player_id` = this player, their team won, not in a tie-break (same idea as match card).
+ * - **Numerator:** Ace or Service Winner credited to this player (`action_player_id`, or `server_id` when action is unset — same as match card / `isPointAttributedToPlayer`), team won, not in a tie-break.
  * - **Denominator:** service games where this player was `server_id` — when every point has a non-empty `start_score`, uses the same game-end rule as `computeHoldStats`
  *   (next point starts at `0-0`). Otherwise falls back to replay: first point of each regular game at 0–0 with this server.
  */
@@ -72,9 +73,12 @@ export function computeServePtsWonPerServiceGame(
     const et = p.ending_type;
     if (
       !stateBefore.isTiebreak &&
-      p.action_player_id === playerId &&
       p.point_winner_team === mySide &&
-      (et === "Ace" || et === "Service Winner")
+      (et === "Ace" || et === "Service Winner") &&
+      isPointAttributedToPlayer(
+        { action_player_id: p.action_player_id ?? null, server_id: p.server_id, ending_type: et ?? null },
+        playerId,
+      )
     ) {
       servePointsWonRegular += 1;
     }
