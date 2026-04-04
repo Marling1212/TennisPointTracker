@@ -82,21 +82,88 @@ const formatDate = (value: string): string =>
     minute: "2-digit",
   });
 
+function parseTeamLabelSegments(label: string | null): string[] {
+  if (!label?.trim()) return [];
+  return label.split(/\s*\/\s*/).map((s) => s.trim()).filter(Boolean);
+}
+
+function namesRoughlyMatch(segment: string, firstName: string, lastName: string, nickname: string): boolean {
+  const full = `${firstName} ${lastName}`.trim().toLowerCase();
+  const nick = (nickname ?? "").trim().toLowerCase();
+  const seg = segment.trim().toLowerCase();
+  if (!seg) return false;
+  return (
+    full === seg ||
+    full.includes(seg) ||
+    seg.includes(full) ||
+    (nick.length > 0 && (nick === seg || nick.includes(seg) || seg.includes(nick)))
+  );
+}
+
+/** True if roster name / nickname appears anywhere on that team label (aligns with match `/stats` doubles logic). */
+function labelSuggestsPlayer(label: string | null, firstName: string, lastName: string, nickname: string): boolean {
+  const l = (label ?? "").toLowerCase();
+  const full = `${firstName} ${lastName}`.trim().toLowerCase();
+  const nick = (nickname ?? "").trim().toLowerCase();
+  if (full && l.includes(full)) return true;
+  if (nick.length > 0 && l.includes(nick)) return true;
+  return false;
+}
+
+/** Include a match in this player’s row if they appear on either team line (slash segments or full string). */
+function playerAppearsInMatchTeamLabels(match: MatchRow, firstName: string, lastName: string, nickname: string): boolean {
+  if (labelSuggestsPlayer(match.team_a_name, firstName, lastName, nickname)) return true;
+  if (labelSuggestsPlayer(match.team_b_name, firstName, lastName, nickname)) return true;
+  if (parseTeamLabelSegments(match.team_a_name).some((s) => namesRoughlyMatch(s, firstName, lastName, nickname))) return true;
+  if (parseTeamLabelSegments(match.team_b_name).some((s) => namesRoughlyMatch(s, firstName, lastName, nickname))) return true;
+  return false;
+}
+
+function sideFromTeamLabelsOnly(
+  match: MatchRow,
+  firstName: string,
+  lastName: string,
+  nickname: string,
+): "teamA" | "teamB" | null {
+  const onA =
+    parseTeamLabelSegments(match.team_a_name).some((s) => namesRoughlyMatch(s, firstName, lastName, nickname)) ||
+    labelSuggestsPlayer(match.team_a_name, firstName, lastName, nickname);
+  const onB =
+    parseTeamLabelSegments(match.team_b_name).some((s) => namesRoughlyMatch(s, firstName, lastName, nickname)) ||
+    labelSuggestsPlayer(match.team_b_name, firstName, lastName, nickname);
+  if (onA && !onB) return "teamA";
+  if (onB && !onA) return "teamB";
+  return null;
+}
+
+function sortMatchPointsChronologically(pts: PointRow[]): PointRow[] {
+  return [...pts].sort((a, b) => {
+    const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+    if (ta !== tb) return ta - tb;
+    return (a.id ?? "").localeCompare(b.id ?? "");
+  });
+}
+
 /**
- * Prefer `serving_team` when this player appears as server (reliable for doubles nicknames vs roster names).
- * Fallback: substring match on `team_a_name` / full name (singles-style).
+ * Prefer `serving_team` when this player appears as server; else same segment/nickname logic as match stats.
  */
 function mySideForPlayerInMatch(
   match: MatchRow,
   playerId: string,
   ptsInMatch: PointRow[],
-  fullName: string,
+  firstName: string,
+  lastName: string,
+  nickname: string,
 ): "teamA" | "teamB" {
   for (const p of ptsInMatch) {
     if (p.server_id === playerId && (p.serving_team === "teamA" || p.serving_team === "teamB")) {
       return p.serving_team;
     }
   }
+  const fromLabels = sideFromTeamLabelsOnly(match, firstName, lastName, nickname);
+  if (fromLabels) return fromLabels;
+  const fullName = `${firstName} ${lastName}`.trim();
   return (match.team_a_name ?? "").includes(fullName) ? "teamA" : "teamB";
 }
 
@@ -292,19 +359,26 @@ export default function TeamStatsPage() {
     return players
       .map((player) => {
         const fullName = `${player.first_name} ${player.last_name}`;
-        const playerMatches = matches.filter((match) => {
-          const a = match.team_a_name ?? "";
-          const b = match.team_b_name ?? "";
-          return a.includes(fullName) || b.includes(fullName);
-        });
+        const playerMatches = matches.filter((match) =>
+          playerAppearsInMatchTeamLabels(match, player.first_name, player.last_name, player.nickname),
+        );
         const playerMatchIds = new Set(playerMatches.map((match) => match.id));
         const playerPoints = points.filter((point) => playerMatchIds.has(point.match_id));
 
         let pointsWon = 0;
         let matchesWon = 0;
         for (const match of playerMatches) {
-          const pointsInMatch = playerPoints.filter((point) => point.match_id === match.id);
-          const mySide = mySideForPlayerInMatch(match, player.id, pointsInMatch, fullName);
+          const pointsInMatch = sortMatchPointsChronologically(
+            playerPoints.filter((point) => point.match_id === match.id),
+          );
+          const mySide = mySideForPlayerInMatch(
+            match,
+            player.id,
+            pointsInMatch,
+            player.first_name,
+            player.last_name,
+            player.nickname,
+          );
           const myPoints = pointsInMatch.filter((point) => point.point_winner_team === mySide).length;
           const oppPoints = pointsInMatch.filter((point) => point.point_winner_team && point.point_winner_team !== mySide).length;
           pointsWon += myPoints;
@@ -358,8 +432,17 @@ export default function TeamStatsPage() {
         let serviceGamesRegular = 0;
         for (const match of playerMatches) {
           if (match.is_manual_entry === true) continue;
-          const ptsInMatch = playerPoints.filter((point) => point.match_id === match.id);
-          const mySide = mySideForPlayerInMatch(match, player.id, ptsInMatch, fullName);
+          const ptsInMatch = sortMatchPointsChronologically(
+            playerPoints.filter((point) => point.match_id === match.id),
+          );
+          const mySide = mySideForPlayerInMatch(
+            match,
+            player.id,
+            ptsInMatch,
+            player.first_name,
+            player.last_name,
+            player.nickname,
+          );
           const rules: MatchRules = {
             scoringType: match.scoring_type === "No-Ad" ? "No-Ad" : "Standard",
             setsFormat: match.sets_format ?? "Best of 3 Sets",
