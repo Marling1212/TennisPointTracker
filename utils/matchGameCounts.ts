@@ -20,6 +20,8 @@ export type PointForOpeningServeCount = {
 
 export type PointForServePtsPerGame = PointForOpeningServeCount & {
   ending_type?: string | null;
+  /** Who is credited for the shot (matches match-stats doubles split). */
+  action_player_id?: string | null;
   /** Logged score before the point; when present on every row, used for service-game boundaries (see `computeHoldStats`). */
   start_score?: string | null;
 };
@@ -36,10 +38,10 @@ function sortPointsForReplay<T extends PointForOpeningServeCount>(points: T[]): 
 }
 
 /**
- * (Ace + Service Winner on serve) ÷ service games, **regular games only** (no tie-break).
+ * (Ace + Service Winner) ÷ service games, **regular games only** (no tie-break).
  *
- * - **Numerator:** Ace or Service Winner while `server_id` is this player, their team won, not in a tie-break.
- * - **Denominator:** when every point has a non-empty `start_score`, uses the same game-end rule as `computeHoldStats`
+ * - **Numerator:** Ace or Service Winner with `action_player_id` = this player, their team won, not in a tie-break (same idea as match card).
+ * - **Denominator:** service games where this player was `server_id` — when every point has a non-empty `start_score`, uses the same game-end rule as `computeHoldStats`
  *   (next point starts at `0-0`). Otherwise falls back to replay: first point of each regular game at 0–0 with this server.
  */
 export function computeServePtsWonPerServiceGame(
@@ -70,7 +72,7 @@ export function computeServePtsWonPerServiceGame(
     const et = p.ending_type;
     if (
       !stateBefore.isTiebreak &&
-      p.server_id === playerId &&
+      p.action_player_id === playerId &&
       p.point_winner_team === mySide &&
       (et === "Ace" || et === "Service Winner")
     ) {
