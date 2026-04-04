@@ -45,6 +45,7 @@ type PointRow = {
   point_winner_team: "teamA" | "teamB" | null;
   ending_type: "Winner" | "Unforced Error" | "Forced Error" | "Ace" | "Service Winner" | "Double Fault" | null;
   start_score?: string | null;
+  serving_team?: "teamA" | "teamB" | null;
 };
 
 type SortKey = "pointWinRate" | "winRate" | "matchesPlayed" | "avgServePointsWonPerGame" | "aggressionRatio";
@@ -65,6 +66,9 @@ type PlayerStats = {
   aggressionRatio: number;
   /** (Ace + Service Winner credited to player via action_player_id, excl. tie-break) ÷ regular service games. */
   avgServePointsWonPerGame: number;
+  /** Raw sum for serve stat (numerator / denominator); same average can round identically with different pairs. */
+  servePtsNumerator: number;
+  servePtsDenominator: number;
   doubleFaults: number;
   totalPointsPlayed: number;
 };
@@ -77,6 +81,24 @@ const formatDate = (value: string): string =>
     hour: "numeric",
     minute: "2-digit",
   });
+
+/**
+ * Prefer `serving_team` when this player appears as server (reliable for doubles nicknames vs roster names).
+ * Fallback: substring match on `team_a_name` / full name (singles-style).
+ */
+function mySideForPlayerInMatch(
+  match: MatchRow,
+  playerId: string,
+  ptsInMatch: PointRow[],
+  fullName: string,
+): "teamA" | "teamB" {
+  for (const p of ptsInMatch) {
+    if (p.server_id === playerId && (p.serving_team === "teamA" || p.serving_team === "teamB")) {
+      return p.serving_team;
+    }
+  }
+  return (match.team_a_name ?? "").includes(fullName) ? "teamA" : "teamB";
+}
 
 export default function TeamStatsPage() {
   const { t, language } = useLanguage();
@@ -249,7 +271,7 @@ export default function TeamStatsPage() {
 
       const { data: pointsData, error: pointsError } = await supabase
         .from("points")
-        .select("id, match_id, created_at, server_id, action_player_id, point_winner_team, ending_type, start_score")
+        .select("id, match_id, created_at, server_id, action_player_id, point_winner_team, ending_type, start_score, serving_team")
         .in("match_id", pointTrackedMatchIds);
 
       if (pointsError) {
@@ -281,9 +303,8 @@ export default function TeamStatsPage() {
         let pointsWon = 0;
         let matchesWon = 0;
         for (const match of playerMatches) {
-          const isTeamAPlayer = (match.team_a_name ?? "").includes(fullName);
-          const mySide: "teamA" | "teamB" = isTeamAPlayer ? "teamA" : "teamB";
           const pointsInMatch = playerPoints.filter((point) => point.match_id === match.id);
+          const mySide = mySideForPlayerInMatch(match, player.id, pointsInMatch, fullName);
           const myPoints = pointsInMatch.filter((point) => point.point_winner_team === mySide).length;
           const oppPoints = pointsInMatch.filter((point) => point.point_winner_team && point.point_winner_team !== mySide).length;
           pointsWon += myPoints;
@@ -337,9 +358,8 @@ export default function TeamStatsPage() {
         let serviceGamesRegular = 0;
         for (const match of playerMatches) {
           if (match.is_manual_entry === true) continue;
-          const isTeamAPlayer = (match.team_a_name ?? "").includes(fullName);
-          const mySide: "teamA" | "teamB" = isTeamAPlayer ? "teamA" : "teamB";
           const ptsInMatch = playerPoints.filter((point) => point.match_id === match.id);
+          const mySide = mySideForPlayerInMatch(match, player.id, ptsInMatch, fullName);
           const rules: MatchRules = {
             scoringType: match.scoring_type === "No-Ad" ? "No-Ad" : "Standard",
             setsFormat: match.sets_format ?? "Best of 3 Sets",
@@ -385,6 +405,8 @@ export default function TeamStatsPage() {
           pointWinRate,
           aggressionRatio,
           avgServePointsWonPerGame,
+          servePtsNumerator: servePointsWonRegular,
+          servePtsDenominator: serviceGamesRegular,
           doubleFaults: playerPoints.filter(
             (point) => point.server_id === player.id && point.ending_type === "Double Fault",
           ).length,
@@ -484,7 +506,14 @@ export default function TeamStatsPage() {
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.pointWinRate.toFixed(1)}%</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.aggressionRatio.toFixed(2)}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">
-                        {row.avgServePointsWonPerGame.toFixed(2)}
+                        <span className="tabular-nums">{row.avgServePointsWonPerGame.toFixed(3)}</span>
+                        {row.servePtsDenominator > 0 ? (
+                          <span className="mt-0.5 block text-xs font-semibold text-slate-600">
+                            {row.servePtsNumerator} / {row.servePtsDenominator}
+                          </span>
+                        ) : (
+                          <span className="mt-0.5 block text-xs text-slate-500">—</span>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.doubleFaults}</td>
                       <td className="px-3 py-3 text-right text-sm font-bold text-slate-900">{row.totalPointsPlayed}</td>
