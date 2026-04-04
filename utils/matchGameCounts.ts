@@ -23,6 +23,8 @@ export type PointForServePtsPerGame = PointForOpeningServeCount & {
   ending_type?: string | null;
   /** Who is credited for the shot (matches match-stats doubles split). */
   action_player_id?: string | null;
+  /** Which team served this point (live log); used to validate Ace/SW without relying on roster-derived `mySide`. */
+  serving_team?: "teamA" | "teamB" | null;
   /** Logged score before the point; when present on every row, used for service-game boundaries (see `computeHoldStats`). */
   start_score?: string | null;
 };
@@ -41,7 +43,7 @@ function sortPointsForReplay<T extends PointForOpeningServeCount>(points: T[]): 
 /**
  * (Ace + Service Winner) ÷ service games, **regular games only** (no tie-break).
  *
- * - **Numerator:** Ace or Service Winner credited to this player (`action_player_id`, or `server_id` when action is unset — same as match card / `isPointAttributedToPlayer`), team won, not in a tie-break.
+ * - **Numerator:** Ace or Service Winner credited to this player (`isPointAttributedToPlayer`). Win side: prefer `point_winner_team === serving_team` when `serving_team` is set (avoids roster `mySide` mismatches); else `point_winner_team === mySide`.
  * - **Denominator:** service games where this player was `server_id` — when every point has a non-empty `start_score`, uses the same game-end rule as `computeHoldStats`
  *   (next point starts at `0-0`). Otherwise falls back to replay: first point of each regular game at 0–0 with this server.
  */
@@ -71,16 +73,20 @@ export function computeServePtsWonPerServiceGame(
     const stateBefore = state;
 
     const et = p.ending_type;
-    if (
-      !stateBefore.isTiebreak &&
-      p.point_winner_team === mySide &&
-      (et === "Ace" || et === "Service Winner") &&
-      isPointAttributedToPlayer(
+    if (!stateBefore.isTiebreak && (et === "Ace" || et === "Service Winner")) {
+      const attributed = isPointAttributedToPlayer(
         { action_player_id: p.action_player_id ?? null, server_id: p.server_id, ending_type: et ?? null },
         playerId,
-      )
-    ) {
-      servePointsWonRegular += 1;
+      );
+      if (attributed) {
+        const wt = p.point_winner_team;
+        const winSideOk =
+          wt &&
+          (p.serving_team === "teamA" || p.serving_team === "teamB"
+            ? wt === p.serving_team
+            : wt === mySide);
+        if (winSideOk) servePointsWonRegular += 1;
+      }
     }
 
     if (useHoldDenominator) {

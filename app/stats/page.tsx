@@ -458,6 +458,7 @@ export default function TeamStatsPage() {
               point_winner_team: p.point_winner_team,
               server_id: p.server_id,
               action_player_id: p.action_player_id,
+              serving_team: p.serving_team,
               created_at: p.created_at ?? undefined,
               ending_type: p.ending_type,
               start_score: p.start_score,
