@@ -3,10 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  countGamesWonByTeam,
-  countOpeningServeGamesForPlayer,
-} from "@/utils/matchGameCounts";
+import { computeServeAceSwPerRegularOpeningGame, countGamesWonByTeam } from "@/utils/matchGameCounts";
 import type { MatchRules } from "@/utils/spectatorReplay";
 import { isPointAttributedToPlayer } from "@/utils/playerScoutingAggregation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
@@ -65,7 +62,7 @@ type PlayerStats = {
   pointsWon: number;
   pointWinRate: number;
   aggressionRatio: number;
-  /** (Ace + Service Winner while player served) ÷ games opened on this player's serve (first point 0–0). */
+  /** (Ace + Service Winner on regular serve, excl. tie-break) ÷ regular games opened on this player's serve. */
   avgServePointsWonPerGame: number;
   doubleFaults: number;
   totalPointsPlayed: number;
@@ -334,7 +331,7 @@ export default function TeamStatsPage() {
         const liveMatchesPlayed = playerMatches.filter((m) => m.status === "In Progress").length;
 
         let gamesWon = 0;
-        /** Ace + Service Winner only (not plain Winner on serve). */
+        /** Ace + Service Winner on regular (non–tie-break) serve ÷ regular opening serve games. */
         let acesAndServiceWinnersOnServe = 0;
         let openingServeGames = 0;
         for (const match of playerMatches) {
@@ -343,7 +340,7 @@ export default function TeamStatsPage() {
           const mySide: "teamA" | "teamB" = isTeamAPlayer ? "teamA" : "teamB";
           const ptsInMatch = playerPoints.filter((point) => point.match_id === match.id);
           const rules: MatchRules = {
-            scoringType: match.scoring_type ?? "Standard",
+            scoringType: match.scoring_type === "No-Ad" ? "No-Ad" : "Standard",
             setsFormat: match.sets_format ?? "Best of 3 Sets",
           };
           const counts = countGamesWonByTeam(
@@ -351,22 +348,20 @@ export default function TeamStatsPage() {
             rules,
           );
           gamesWon += mySide === "teamA" ? counts.teamA : counts.teamB;
-          openingServeGames += countOpeningServeGamesForPlayer(
+          const servePts = computeServeAceSwPerRegularOpeningGame(
             ptsInMatch.map((p) => ({
               id: p.id,
               point_winner_team: p.point_winner_team,
               server_id: p.server_id,
               created_at: p.created_at ?? undefined,
+              ending_type: p.ending_type,
             })),
             rules,
             player.id,
+            mySide,
           );
-          for (const p of ptsInMatch) {
-            if (p.server_id !== player.id) continue;
-            const et = p.ending_type;
-            if (et !== "Ace" && et !== "Service Winner") continue;
-            if (p.point_winner_team === mySide) acesAndServiceWinnersOnServe += 1;
-          }
+          openingServeGames += servePts.openingServeGames;
+          acesAndServiceWinnersOnServe += servePts.aceAndServiceWinnerOnServe;
         }
 
         const avgServePointsWonPerGame =
