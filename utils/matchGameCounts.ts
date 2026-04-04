@@ -36,9 +36,9 @@ function sortPointsForReplay<T extends PointForOpeningServeCount>(points: T[]): 
 }
 
 /**
- * Serve points won (all points won while this player served) ÷ service games, **regular games only** (no tie-break).
+ * (Ace + Service Winner on serve) ÷ service games, **regular games only** (no tie-break).
  *
- * - **Numerator:** points where `server_id` is this player, their team won, and the point is not in a tie-break.
+ * - **Numerator:** Ace or Service Winner while `server_id` is this player, their team won, not in a tie-break.
  * - **Denominator:** when every point has a non-empty `start_score`, uses the same game-end rule as `computeHoldStats`
  *   (next point starts at `0-0`). Otherwise falls back to replay: first point of each regular game at 0–0 with this server.
  */
@@ -67,7 +67,13 @@ export function computeServePtsWonPerServiceGame(
 
     const stateBefore = state;
 
-    if (!stateBefore.isTiebreak && p.server_id === playerId && p.point_winner_team === mySide) {
+    const et = p.ending_type;
+    if (
+      !stateBefore.isTiebreak &&
+      p.server_id === playerId &&
+      p.point_winner_team === mySide &&
+      (et === "Ace" || et === "Service Winner")
+    ) {
       servePointsWonRegular += 1;
     }
 

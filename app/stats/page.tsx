@@ -63,7 +63,7 @@ type PlayerStats = {
   pointsWon: number;
   pointWinRate: number;
   aggressionRatio: number;
-  /** Points won while serving (regular games, excl. tie-break) ÷ regular service games. */
+  /** (Ace + Service Winner on regular serve, excl. tie-break) ÷ regular service games. */
   avgServePointsWonPerGame: number;
   doubleFaults: number;
   totalPointsPlayed: number;
@@ -332,7 +332,7 @@ export default function TeamStatsPage() {
         const liveMatchesPlayed = playerMatches.filter((m) => m.status === "In Progress").length;
 
         let gamesWon = 0;
-        /** Regular-game serve points won ÷ regular service games (hold-style boundaries when `start_score` on all points). */
+        /** Ace + Service Winner on regular serve ÷ regular service games (hold-style boundaries when `start_score` on all points). */
         let servePointsWonRegular = 0;
         let serviceGamesRegular = 0;
         for (const match of playerMatches) {
