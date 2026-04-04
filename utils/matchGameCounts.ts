@@ -20,95 +20,77 @@ export type PointForOpeningServeCount = {
 
 export type PointForServePtsPerGame = PointForOpeningServeCount & {
   ending_type?: string | null;
+  /** Logged score before the point; when present on every row, used for service-game boundaries (see `computeHoldStats`). */
+  start_score?: string | null;
 };
 
-/**
- * Games where this player served the **first point** of a **regular** (non–tie-break) game (0–0 before the point).
- * Tie-break is excluded — it is not a service game for this stat. Doubles: games they opened on serve.
- *
- * Only points with a valid `point_winner_team` are replayed so score state never desyncs.
- */
-export function countOpeningServeGamesForPlayer(
-  points: PointForOpeningServeCount[],
-  rules: MatchRules,
-  playerId: string,
-): number {
-  const ordered = [...points]
-    .filter((p): p is PointForOpeningServeCount & PointWithWinner => Boolean(p.point_winner_team))
+function sortPointsForReplay<T extends PointForOpeningServeCount>(points: T[]): (T & PointWithWinner)[] {
+  return [...points]
+    .filter((p): p is T & PointWithWinner => Boolean(p.point_winner_team))
     .sort((a, b) => {
       const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
       const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
       if (ta !== tb) return ta - tb;
       return (a.id ?? "").localeCompare(b.id ?? "");
     });
-
-  let state: ScoreState = initialScoreState(rules.setsFormat);
-  const isNoAd = rules.scoringType === "No-Ad";
-  let count = 0;
-
-  for (const p of ordered) {
-    if (state.isMatchOver) break;
-
-    const firstPointOfGame =
-      pointValueToNumber(state.points.teamA) === 0 && pointValueToNumber(state.points.teamB) === 0;
-
-    if (firstPointOfGame && !state.isTiebreak && p.server_id === playerId) {
-      count += 1;
-    }
-
-    state = calculateNextScore(state, p.point_winner_team, isNoAd, rules.setsFormat);
-  }
-
-  return count;
 }
 
 /**
- * Single replay: (Ace + Service Winner on serve, excluding tie-break) and (regular opening serve games).
- * Used for team leaderboard "Serve Pts / Game" so numerator and denominator match.
+ * Serve points won (all points won while this player served) ÷ service games, **regular games only** (no tie-break).
+ *
+ * - **Numerator:** points where `server_id` is this player, their team won, and the point is not in a tie-break.
+ * - **Denominator:** when every point has a non-empty `start_score`, uses the same game-end rule as `computeHoldStats`
+ *   (next point starts at `0-0`). Otherwise falls back to replay: first point of each regular game at 0–0 with this server.
  */
-export function computeServeAceSwPerRegularOpeningGame(
+export function computeServePtsWonPerServiceGame(
   points: PointForServePtsPerGame[],
   rules: MatchRules,
   playerId: string,
   mySide: "teamA" | "teamB",
-): { openingServeGames: number; aceAndServiceWinnerOnServe: number } {
-  const ordered = [...points]
-    .filter((p): p is PointForServePtsPerGame & PointWithWinner => Boolean(p.point_winner_team))
-    .sort((a, b) => {
-      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-      if (ta !== tb) return ta - tb;
-      return (a.id ?? "").localeCompare(b.id ?? "");
-    });
+): { serviceGamesRegular: number; servePointsWonRegular: number } {
+  const ordered = sortPointsForReplay(points);
+  if (ordered.length === 0) {
+    return { serviceGamesRegular: 0, servePointsWonRegular: 0 };
+  }
+
+  const useHoldDenominator =
+    ordered.every((p) => p.start_score != null && String(p.start_score).trim() !== "");
 
   let state: ScoreState = initialScoreState(rules.setsFormat);
   const isNoAd = rules.scoringType === "No-Ad";
-  let openingServeGames = 0;
-  let aceAndServiceWinnerOnServe = 0;
+  let serviceGamesRegular = 0;
+  let servePointsWonRegular = 0;
 
-  for (const p of ordered) {
+  for (let i = 0; i < ordered.length; i++) {
+    const p = ordered[i];
     if (state.isMatchOver) break;
 
-    const inTb = state.isTiebreak;
+    const stateBefore = state;
 
-    const firstPointOfGame =
-      pointValueToNumber(state.points.teamA) === 0 && pointValueToNumber(state.points.teamB) === 0;
-
-    if (firstPointOfGame && !inTb && p.server_id === playerId) {
-      openingServeGames += 1;
+    if (!stateBefore.isTiebreak && p.server_id === playerId && p.point_winner_team === mySide) {
+      servePointsWonRegular += 1;
     }
 
-    if (!inTb && p.server_id === playerId) {
-      const et = p.ending_type;
-      if ((et === "Ace" || et === "Service Winner") && p.point_winner_team === mySide) {
-        aceAndServiceWinnerOnServe += 1;
+    if (useHoldDenominator) {
+      const next = ordered[i + 1];
+      const nextStartsFreshGame = next?.start_score?.trim() === "0-0";
+      const isGameEnd = i === ordered.length - 1 || nextStartsFreshGame;
+      if (isGameEnd && !stateBefore.isTiebreak && p.server_id === playerId) {
+        serviceGamesRegular += 1;
+      }
+    } else {
+      const firstPointOfGame =
+        pointValueToNumber(stateBefore.points.teamA) === 0 &&
+        pointValueToNumber(stateBefore.points.teamB) === 0;
+      if (firstPointOfGame && !stateBefore.isTiebreak && p.server_id === playerId) {
+        serviceGamesRegular += 1;
       }
     }
 
     state = calculateNextScore(state, p.point_winner_team, isNoAd, rules.setsFormat);
   }
 
-  return { openingServeGames, aceAndServiceWinnerOnServe };
+  return { serviceGamesRegular, servePointsWonRegular };
 }
 
 /**
