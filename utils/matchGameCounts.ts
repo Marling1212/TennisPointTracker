@@ -41,11 +41,10 @@ function sortPointsForReplay<T extends PointForOpeningServeCount>(points: T[]): 
 }
 
 /**
- * (Ace + Service Winner) ÷ service games, **regular games only** (no tie-break).
+ * (Ace + Service Winner) ÷ regular service games.
  *
- * - **Numerator:** Ace or Service Winner credited to this player (`isPointAttributedToPlayer`). Win side: prefer `point_winner_team === serving_team` when `serving_team` is set (avoids roster `mySide` mismatches); else `point_winner_team === mySide`.
- * - **Denominator:** service games where this player was `server_id` — when every point has a non-empty `start_score`, uses the same game-end rule as `computeHoldStats`
- *   (next point starts at `0-0`). Otherwise falls back to replay: first point of each regular game at 0–0 with this server.
+ * - **Numerator:** All Ace/SW credited to this player (`isPointAttributedToPlayer`), **including tie-break** (matches match-card-style totals more closely). Win side: `point_winner_team` vs `serving_team`, else `mySide`.
+ * - **Denominator:** **Regular games only** (not tie-break “games”) — same as before. Ratio is slightly loose vs pure ATP stats but stable and easy to reason about.
  */
 export function computeServePtsWonPerServiceGame(
   points: PointForServePtsPerGame[],
@@ -73,7 +72,7 @@ export function computeServePtsWonPerServiceGame(
     const stateBefore = state;
 
     const et = p.ending_type;
-    if (!stateBefore.isTiebreak && (et === "Ace" || et === "Service Winner")) {
+    if (et === "Ace" || et === "Service Winner") {
       const attributed = isPointAttributedToPlayer(
         { action_player_id: p.action_player_id ?? null, server_id: p.server_id, ending_type: et ?? null },
         playerId,
