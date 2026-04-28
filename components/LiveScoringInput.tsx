@@ -598,6 +598,7 @@ export default function LiveScoringInput({
   const [hasDbPoints, setHasDbPoints] = useState(false);
   /** False after a 1st-serve fault until the point is logged; used for `is_first_serve` in DB. */
   const [isFirstServe, setIsFirstServe] = useState(true);
+  const [viewerCount, setViewerCount] = useState(0);
   const hasTriggeredFinishRef = useRef(false);
   const configRef = useRef(config);
   configRef.current = config;
@@ -803,6 +804,41 @@ export default function LiveScoringInput({
 
     // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate when opening scoring / correction mode
   }, [matchId, matchStatus, reopenForCorrection, fetchAndHydratePoints]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!matchId || !client || !hasSupabaseEnv) return;
+
+    const presenceKey =
+      typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    const channel = client.channel(`match-viewers-${matchId}`, {
+      config: { presence: { key: presenceKey } },
+    });
+
+    const recomputeViewerCount = () => {
+      const presenceState = channel.presenceState<Record<string, unknown>>();
+      let total = 0;
+      for (const users of Object.values(presenceState)) {
+        total += users.length;
+      }
+      setViewerCount(total);
+    };
+
+    channel
+      .on("presence", { event: "sync" }, recomputeViewerCount)
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await channel.track({ role: "scorekeeper", online_at: new Date().toISOString() });
+          recomputeViewerCount();
+        }
+      });
+
+    return () => {
+      void channel.untrack();
+      void client.removeChannel(channel);
+      setViewerCount(0);
+    };
+  }, [matchId]);
 
   const finishMatch = useCallback(async () => {
     const summaries = state.present.completedSetScores;
@@ -1114,6 +1150,7 @@ export default function LiveScoringInput({
           <p className="text-xs text-slate-400">
             {t("Current server:")} {currentServerName}
           </p>
+          {matchId ? <p className="text-[10px] text-emerald-300">{t("Watching now")}: {viewerCount}</p> : null}
           <div className="mt-1 inline-grid grid-cols-2 rounded-md border border-slate-600 bg-slate-800 p-0.5 text-[10px]">
             <button
               type="button"

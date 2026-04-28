@@ -229,6 +229,9 @@ export default function SpectatorLivePage() {
 
   const [match, setMatch] = useState<MatchLiveRow | null>(null);
   const [points, setPoints] = useState<SpectatorPoint[]>([]);
+  const [delaySeconds, setDelaySeconds] = useState(12);
+  const [clockTick, setClockTick] = useState(Date.now());
+  const [viewerCount, setViewerCount] = useState(0);
   const [loadError, setLoadError] = useState("");
   const [ready, setReady] = useState(false);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
@@ -246,14 +249,44 @@ export default function SpectatorLivePage() {
     };
   }, [match?.scoring_type, match?.sets_format]);
 
-  const scoreState = useMemo(() => replayPointsToScoreState(points, rules), [points, rules]);
+  const delayedPoints = useMemo(() => {
+    const cutoff = clockTick - delaySeconds * 1000;
+    return points.filter((point) => {
+      const at = point.created_at ? new Date(point.created_at).getTime() : 0;
+      return at <= cutoff;
+    });
+  }, [clockTick, delaySeconds, points]);
 
-  const servingTeam = useMemo(() => nextServingTeamAfterPoints(points, rules), [points, rules]);
+  const scoreState = useMemo(() => replayPointsToScoreState(delayedPoints, rules), [delayedPoints, rules]);
+
+  const servingTeam = useMemo(() => nextServingTeamAfterPoints(delayedPoints, rules), [delayedPoints, rules]);
 
   const teamAName = match?.team_a_name?.trim() || "Team A";
   const teamBName = match?.team_b_name?.trim() || "Team B";
 
   const facebookStreamUrl = match?.stream_url?.trim() ?? "";
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockTick(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!matchId || typeof window === "undefined") return;
+    const key = `spectator-delay-seconds-${matchId}`;
+    const saved = window.localStorage.getItem(key);
+    if (!saved) return;
+    const parsed = Number(saved);
+    if (Number.isFinite(parsed)) {
+      setDelaySeconds(Math.max(0, Math.min(120, Math.round(parsed))));
+    }
+  }, [matchId]);
+
+  useEffect(() => {
+    if (!matchId || typeof window === "undefined") return;
+    const key = `spectator-delay-seconds-${matchId}`;
+    window.localStorage.setItem(key, String(delaySeconds));
+  }, [matchId, delaySeconds]);
 
   const mergePoint = useCallback((row: SpectatorPoint) => {
     setPoints((prev) => {
@@ -266,6 +299,10 @@ export default function SpectatorLivePage() {
       });
       return next;
     });
+  }, []);
+
+  const removePoint = useCallback((pointId: string) => {
+    setPoints((prev) => prev.filter((point) => point.id !== pointId));
   }, []);
 
   const refetchAllPoints = useCallback(async () => {
@@ -423,6 +460,14 @@ export default function SpectatorLivePage() {
       )
       .on(
         "postgres_changes",
+        { event: "DELETE", schema: "public", table: "points", filter: `match_id=eq.${matchId}` },
+        (payload) => {
+          const row = payload.old as { id?: string } | null;
+          if (row?.id) removePoint(row.id);
+        },
+      )
+      .on(
+        "postgres_changes",
         { event: "UPDATE", schema: "public", table: "matches", filter: `id=eq.${matchId}` },
         (payload) => {
           const row = payload.new as MatchLiveRow & { spectator_public?: boolean | null };
@@ -469,7 +514,43 @@ export default function SpectatorLivePage() {
     return () => {
       void client.removeChannel(channel);
     };
-  }, [matchId, mergePoint, ready, match?.spectator_public]);
+  }, [matchId, mergePoint, removePoint, ready, match?.spectator_public]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!matchId || !client || !hasSupabaseEnv || !ready) return;
+    if (match?.spectator_public === false) return;
+
+    const presenceKey =
+      typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    const channel = client.channel(`match-viewers-${matchId}`, {
+      config: { presence: { key: presenceKey } },
+    });
+
+    const recomputeViewerCount = () => {
+      const presenceState = channel.presenceState<Record<string, unknown>>();
+      let total = 0;
+      for (const users of Object.values(presenceState)) {
+        total += users.length;
+      }
+      setViewerCount(total);
+    };
+
+    channel
+      .on("presence", { event: "sync" }, recomputeViewerCount)
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await channel.track({ role: "viewer", online_at: new Date().toISOString() });
+          recomputeViewerCount();
+        }
+      });
+
+    return () => {
+      void channel.untrack();
+      void client.removeChannel(channel);
+      setViewerCount(0);
+    };
+  }, [matchId, ready, match?.spectator_public]);
 
   /** Keep screen awake while viewing a live (in-progress) public match. */
   useEffect(() => {
@@ -546,6 +627,29 @@ export default function SpectatorLivePage() {
   return (
     <main className="flex min-h-screen flex-col bg-black text-white">
       <h1 className="sr-only">{t("Live match spectator")}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-950 px-3 py-2">
+        <div className="text-[11px] font-semibold text-zinc-200">
+          {t("Watching now")}: <span className="text-emerald-300">{viewerCount}</span>
+        </div>
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className="text-zinc-400">{t("Score delay")}</span>
+          <button
+            type="button"
+            onClick={() => setDelaySeconds((prev) => Math.max(0, prev - 5))}
+            className="rounded border border-zinc-600 bg-zinc-900 px-2 py-1 font-bold text-white"
+          >
+            -5s
+          </button>
+          <span className="min-w-10 text-center font-bold text-amber-300">{delaySeconds}s</span>
+          <button
+            type="button"
+            onClick={() => setDelaySeconds((prev) => Math.min(120, prev + 5))}
+            className="rounded border border-zinc-600 bg-zinc-900 px-2 py-1 font-bold text-white"
+          >
+            +5s
+          </button>
+        </div>
+      </div>
 
       {facebookStreamUrl ? (
         <>
