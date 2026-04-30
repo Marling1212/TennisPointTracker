@@ -56,6 +56,12 @@ export const translations: Record<AppLanguage, Record<string, string>> = {
     "Working...": "Working...",
     "Something went wrong. Please try again.": "Something went wrong. Please try again.",
     "Username is required.": "Username is required.",
+    "Signup error RLS hint":
+      "Account was created but your profile could not be saved (database permissions). Ask an admin to allow inserts on profiles/teams for new users, or use a database trigger after sign-up.",
+    "Signup error username taken": "That username is already taken. Please choose another.",
+    "Signup error email taken": "This email is already registered. Try signing in or use a different email.",
+    "Signup error no user after signup":
+      "Sign-up did not return a user id (often email confirmation or project settings). Check your email to confirm, or contact support.",
     // Match play header (server component uses client wrapper)
     "Match #": "Match #",
     // New match setup
@@ -425,6 +431,12 @@ export const translations: Record<AppLanguage, Record<string, string>> = {
     "Working...": "處理中…",
     "Something went wrong. Please try again.": "發生錯誤，請再試一次。",
     "Username is required.": "請填寫使用者名稱。",
+    "Signup error RLS hint":
+      "帳號可能已建立，但無法寫入個人檔案（資料庫權限／RLS）。請管理員在 Supabase 為新用戶開放 profiles、teams 的 INSERT 規則，或改用以資料庫 Trigger 自動建立資料。",
+    "Signup error username taken": "此使用者名稱已被使用，請換一個。",
+    "Signup error email taken": "此電子郵件已註冊過，請改登入或使用其他信箱。",
+    "Signup error no user after signup":
+      "註冊未回傳使用者編號（常見於需信箱驗證或專案設定）。請到信箱完成驗證後再登入，或聯絡技術支援。",
     "Match #": "比賽編號 #",
     "Loading players...": "載入球員中…",
     "No team found for this account.": "此帳號找不到隊伍。",

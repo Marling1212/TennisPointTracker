@@ -3,9 +3,36 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
+import { extractErrorMessage } from "@/utils/extractErrorMessage";
 import { useLanguage } from "@/components/LanguageContext";
 
 type AuthMode = "sign-in" | "sign-up";
+
+function friendlyAuthMessage(raw: string, t: (key: string) => string): string {
+  const lower = raw.toLowerCase();
+  if (lower.includes("row-level security") || lower.includes("42501")) {
+    return t("Signup error RLS hint");
+  }
+  if (
+    lower.includes("duplicate key") ||
+    lower.includes("unique constraint") ||
+    lower.includes("profiles_username") ||
+    lower.includes("username_key")
+  ) {
+    return t("Signup error username taken");
+  }
+  if (
+    lower.includes("user already registered") ||
+    lower.includes("already registered") ||
+    lower.includes("email address is already")
+  ) {
+    return t("Signup error email taken");
+  }
+  if (raw.includes("Sign up succeeded but no user id")) {
+    return t("Signup error no user after signup");
+  }
+  return raw;
+}
 
 export default function LoginPage() {
   const { t } = useLanguage();
@@ -66,8 +93,8 @@ export default function LoginPage() {
       router.push("/");
       router.refresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : t("Something went wrong. Please try again.");
-      setErrorMessage(message);
+      const raw = extractErrorMessage(error) ?? t("Something went wrong. Please try again.");
+      setErrorMessage(!isSignIn ? friendlyAuthMessage(raw, t) : raw);
     } finally {
       setIsSubmitting(false);
     }
