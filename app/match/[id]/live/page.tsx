@@ -229,8 +229,13 @@ export default function SpectatorLivePage() {
 
   const [match, setMatch] = useState<MatchLiveRow | null>(null);
   const [points, setPoints] = useState<SpectatorPoint[]>([]);
-  const [delaySeconds, setDelaySeconds] = useState(12);
-  const [clockTick, setClockTick] = useState(Date.now());
+  const [delaySeconds, setDelaySeconds] = useState(() => {
+    if (typeof window === "undefined") return 12;
+    const saved = window.localStorage.getItem(`spectator-delay-seconds-${params.id}`);
+    const parsed = Number(saved);
+    return Number.isFinite(parsed) ? Math.max(0, Math.min(120, Math.round(parsed))) : 12;
+  });
+  const [clockTick, setClockTick] = useState(0);
   const [viewerCount, setViewerCount] = useState(0);
   const [loadError, setLoadError] = useState("");
   const [ready, setReady] = useState(false);
@@ -274,17 +279,6 @@ export default function SpectatorLivePage() {
   useEffect(() => {
     if (!matchId || typeof window === "undefined") return;
     const key = `spectator-delay-seconds-${matchId}`;
-    const saved = window.localStorage.getItem(key);
-    if (!saved) return;
-    const parsed = Number(saved);
-    if (Number.isFinite(parsed)) {
-      setDelaySeconds(Math.max(0, Math.min(120, Math.round(parsed))));
-    }
-  }, [matchId]);
-
-  useEffect(() => {
-    if (!matchId || typeof window === "undefined") return;
-    const key = `spectator-delay-seconds-${matchId}`;
     window.localStorage.setItem(key, String(delaySeconds));
   }, [matchId, delaySeconds]);
 
@@ -324,7 +318,9 @@ export default function SpectatorLivePage() {
     const prev = prevSpectatorPublicRef.current;
     prevSpectatorPublicRef.current = match.spectator_public;
     if (prev === false && match.spectator_public === true) {
-      void refetchAllPoints();
+      window.setTimeout(() => {
+        void refetchAllPoints();
+      }, 0);
     }
   }, [ready, match, refetchAllPoints]);
 
@@ -375,11 +371,7 @@ export default function SpectatorLivePage() {
 
   useEffect(() => {
     const client = supabase;
-    if (!matchId || !client || !hasSupabaseEnv) {
-      setLoadError(!hasSupabaseEnv ? t("App configuration error.") : "");
-      setReady(true);
-      return;
-    }
+    if (!matchId || !client || !hasSupabaseEnv) return;
 
     let cancelled = false;
 

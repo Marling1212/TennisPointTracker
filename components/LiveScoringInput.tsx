@@ -802,7 +802,6 @@ export default function LiveScoringInput({
 
     void fetchAndHydratePoints();
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate when opening scoring / correction mode
   }, [matchId, matchStatus, reopenForCorrection, fetchAndHydratePoints]);
 
   useEffect(() => {

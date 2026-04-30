@@ -250,29 +250,24 @@ export default function NewMatchPage() {
       ? formatPlayerDisplayName(p.firstName, p.lastName, language)
       : p.name;
 
-  const serverCandidates = [...teamAPlayers, ...teamBPlayers];
+  const serverCandidates = useMemo(() => [...teamAPlayers, ...teamBPlayers], [teamAPlayers, teamBPlayers]);
 
   const receivingTeamPlayers = useMemo(() => {
-    const initial = serverCandidates.find((c) => c.id === initialServerId);
+    const initial = serverCandidates.find((candidate) => candidate.id === initialServerId);
     if (!initial) return [];
     const recvSide = initial.side === "A" ? "B" : "A";
-    return serverCandidates.filter((c) => c.side === recvSide);
+    return serverCandidates.filter((candidate) => candidate.side === recvSide);
   }, [serverCandidates, initialServerId]);
-
-  useEffect(() => {
-    if (setsFormat !== "Tiebreak Only" || matchFormat !== "doubles") return;
-    setDoublesTiebreakFirstReceiverServerId((prev) => {
-      const ok = receivingTeamPlayers.some((p) => p.id === prev);
-      if (ok) return prev;
-      return receivingTeamPlayers[0]?.id ?? "";
-    });
-  }, [setsFormat, matchFormat, receivingTeamPlayers]);
 
   const hasValidInitialServer = serverCandidates.some((candidate) => candidate.id === initialServerId);
   const needsTiebreakDoublesReceiverPick = setsFormat === "Tiebreak Only" && matchFormat === "doubles";
+  const resolvedTiebreakReceiverId =
+    doublesTiebreakFirstReceiverServerId &&
+    receivingTeamPlayers.some((player) => player.id === doublesTiebreakFirstReceiverServerId)
+      ? doublesTiebreakFirstReceiverServerId
+      : receivingTeamPlayers[0]?.id ?? "";
   const hasValidTiebreakDoublesReceiver =
-    !needsTiebreakDoublesReceiverPick ||
-    receivingTeamPlayers.some((p) => p.id === doublesTiebreakFirstReceiverServerId);
+    !needsTiebreakDoublesReceiverPick || resolvedTiebreakReceiverId.length > 0;
   const canStartLive = isTeamsReady && hasValidInitialServer && hasValidTiebreakDoublesReceiver;
   const canSavePast =
     entryMode === "past" &&
@@ -397,8 +392,8 @@ export default function NewMatchPage() {
         name: initialServer.name,
         side: initialServer.side,
       },
-      ...(needsTiebreakDoublesReceiverPick && doublesTiebreakFirstReceiverServerId
-        ? { doublesTiebreakFirstReceiverServerId }
+      ...(needsTiebreakDoublesReceiverPick && resolvedTiebreakReceiverId
+        ? { doublesTiebreakFirstReceiverServerId: resolvedTiebreakReceiverId }
         : {}),
     };
 
@@ -796,7 +791,7 @@ export default function NewMatchPage() {
                       type="button"
                       onClick={() => setDoublesTiebreakFirstReceiverServerId(candidate.id)}
                       className={`rounded-2xl px-4 py-4 text-left text-sm font-bold ${
-                        doublesTiebreakFirstReceiverServerId === candidate.id
+                        resolvedTiebreakReceiverId === candidate.id
                           ? "bg-violet-600 text-white ring-2 ring-violet-300"
                           : "bg-slate-100 text-slate-900"
                       }`}
