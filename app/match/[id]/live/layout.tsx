@@ -3,7 +3,7 @@
  */
 export default function SpectatorLiveLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-40 flex min-h-0 flex-col overflow-y-auto bg-black print:relative print:inset-auto print:min-h-screen">
+    <div className="fixed inset-0 z-40 flex min-h-0 flex-col overflow-y-auto bg-black pb-[4.5rem] print:relative print:inset-auto print:min-h-screen print:pb-0">
       {children}
     </div>
   );

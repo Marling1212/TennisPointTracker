@@ -1139,10 +1139,10 @@ export default function LiveScoringInput({
       <div className="flex items-center justify-between border-b border-slate-700 bg-slate-900/95 px-3 py-2">
         <button
           type="button"
-          onClick={() => router.back()}
+          onClick={() => router.push("/")}
           className="rounded-md border border-slate-500 bg-slate-800 px-2 py-1 text-xs font-semibold text-white"
         >
-          {t("Back")}
+          {t("Home")}
         </button>
         <div className="text-center">
           <p className="text-xs font-bold uppercase tracking-wide text-slate-300">{phaseLabel}</p>

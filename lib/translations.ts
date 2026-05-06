@@ -31,6 +31,8 @@ export const translations: Record<AppLanguage, Record<string, string>> = {
     "Svc W": "Svc W",
     // Navigation & shell
     "Live Match": "Live Match",
+    Home: "Home",
+    "Nav new match": "New match",
     Players: "Players",
     Stats: "Stats",
     Back: "Back",
@@ -408,6 +410,8 @@ export const translations: Record<AppLanguage, Record<string, string>> = {
     DF: "雙誤",
     "Svc W": "發球得分",
     "Live Match": "即時計分",
+    Home: "首頁",
+    "Nav new match": "新比賽",
     Players: "球員",
     Stats: "數據",
     Back: "返回",
