@@ -612,6 +612,14 @@ export default function MatchStatsPage() {
           <div className="flex flex-wrap items-center justify-end gap-2">
             {points.length > 0 && (
               <Link
+                href={`/match/${matchId}/download`}
+                className="inline-flex items-center rounded-lg border-2 border-slate-900 bg-slate-900 px-3 py-2 text-xs font-semibold text-white"
+              >
+                {t("Download Match")}
+              </Link>
+            )}
+            {points.length > 0 && (
+              <Link
                 href={`/match/${matchId}/review`}
                 className="inline-flex items-center rounded-lg border-2 border-indigo-600 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900"
               >
