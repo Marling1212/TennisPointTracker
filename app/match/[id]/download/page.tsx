@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
 import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
+import { formatSetGamesScoreBeforeGameIndex } from "@/utils/setGamesScoreLabel";
 
 type TeamTag = "teamA" | "teamB";
 
@@ -299,14 +300,15 @@ export default function MatchDownloadPage() {
           {sets.map((setGroup) => (
             <div key={setGroup.setNumber} className="rounded-xl border border-slate-300 p-2">
               <p className="text-sm font-bold">{t("Set")} {setGroup.setNumber}</p>
-              {setGroup.games.map((game) => {
+              {setGroup.games.map((game, idxInSet) => {
                 const serverName = getServerName(game.serverId, game.serverTeam);
                 const isHold =
                   game.serverTeam !== null && game.winnerTeam !== null ? game.serverTeam === game.winnerTeam : null;
+                const setGamesAtStart = formatSetGamesScoreBeforeGameIndex(setGroup.games, idxInSet);
                 return (
                   <div key={game.gameNumber} className="mt-2 rounded-lg border border-slate-200 p-2">
                     <p className="text-sm font-semibold">
-                      {t("Game")} {game.gameNumber} · {t("Server")}: {serverName} ·{" "}
+                      {t("Game")} {game.gameNumber} · {t("Set games")} {setGamesAtStart} · {t("Server")}: {serverName} ·{" "}
                       {isHold === null ? "—" : isHold ? t("Hold") : t("Break")}
                     </p>
                     <div className="mt-1 space-y-1 text-xs text-slate-700">

@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
 import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
+import { formatSetGamesScoreBeforeGameIndex } from "@/utils/setGamesScoreLabel";
 
 type TeamTag = "teamA" | "teamB";
 
@@ -325,11 +326,12 @@ export default function MatchReviewPage() {
                   {t("Set")} {setGroup.setNumber}
                 </div>
                 <div className="divide-y-2 divide-slate-200">
-                  {setGroup.games.map((game) => {
+                  {setGroup.games.map((game, idxInSet) => {
                     const isOpen = Boolean(openGames[game.gameNumber]);
                     const serverName = getServerName(game.serverId, game.serverTeam);
                     const isHold =
                       game.serverTeam !== null && game.winnerTeam !== null ? game.serverTeam === game.winnerTeam : null;
+                    const setGamesAtStart = formatSetGamesScoreBeforeGameIndex(setGroup.games, idxInSet);
 
                     return (
                       <article key={game.gameNumber}>
@@ -340,7 +342,10 @@ export default function MatchReviewPage() {
                         >
                           <div className="min-w-0">
                             <p className="text-sm font-bold text-slate-900">
-                              {t("Game")} {game.gameNumber}
+                              {t("Game")} {game.gameNumber}{" "}
+                              <span className="font-semibold text-slate-600">
+                                · {t("Set games")} {setGamesAtStart}
+                              </span>
                             </p>
                             <p className="text-xs text-slate-600">
                               {t("Server")}: {serverName}
