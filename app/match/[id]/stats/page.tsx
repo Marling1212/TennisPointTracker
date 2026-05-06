@@ -610,6 +610,14 @@ export default function MatchStatsPage() {
             {t("Back to Dashboard")}
           </Link>
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {points.length > 0 && (
+              <Link
+                href={`/match/${matchId}/review`}
+                className="inline-flex items-center rounded-lg border-2 border-indigo-600 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900"
+              >
+                {t("Review")}
+              </Link>
+            )}
             {match?.status === "Completed" && !match.is_manual_entry && points.length > 0 && (
               <Link
                 href={`/match/${matchId}/play?edit=1`}

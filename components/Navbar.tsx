@@ -22,12 +22,15 @@ export default function Navbar() {
   const matchId = matchIdFromPath(pathname);
   const isPlay = pathname.includes("/play");
   const isLive = pathname.includes("/live");
+  const isReview = pathname.includes("/review");
+  const isMatchStats = /^\/match\/[^/]+\/stats$/.test(pathname);
+  const isMatchScopedView = Boolean(matchId) && (isPlay || isLive || isReview || isMatchStats);
 
-  if (isPlay || isLive) {
+  if (isMatchScopedView) {
     return (
       <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur print:hidden">
         <div className="mx-auto flex w-full max-w-md items-stretch gap-2 px-3 py-2">
-          <div className={`grid min-w-0 flex-1 gap-2 ${matchId ? "grid-cols-3" : "grid-cols-2"}`}>
+          <div className={`grid min-w-0 flex-1 gap-2 ${matchId ? "grid-cols-4" : "grid-cols-2"}`}>
             <Link
               href="/"
               className="rounded-xl px-2 py-3 text-center text-sm font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -46,6 +49,14 @@ export default function Navbar() {
                 className="rounded-xl px-2 py-3 text-center text-sm font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200"
               >
                 {t("Match stats")}
+              </Link>
+            ) : null}
+            {matchId ? (
+              <Link
+                href={`/match/${matchId}/review`}
+                className="rounded-xl px-2 py-3 text-center text-sm font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200"
+              >
+                {t("Review")}
               </Link>
             ) : null}
           </div>
