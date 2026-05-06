@@ -443,7 +443,7 @@ export default function MatchStatsPage() {
       const { data: pointsData, error: pointsError } = await supabase
         .from("points")
         .select(
-          "id, created_at, point_winner_team, ending_type, server_id, action_player_id, is_break_point, is_match_point, serving_team",
+          "id, created_at, point_winner_team, ending_type, server_id, action_player_id, is_break_point, is_match_point, match_point_team_a, match_point_team_b, serving_team",
         )
         .eq("match_id", matchId);
 
