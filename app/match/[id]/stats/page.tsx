@@ -5,10 +5,24 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
-import type { AppLanguage } from "@/lib/translations";
-import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
 import { resolveWinnerFromLoggedPoints } from "@/utils/matchWinnerFromPoints";
 import type { MatchRules } from "@/utils/spectatorReplay";
+import {
+  conversionHighlightRates,
+  matchPointTeamStats,
+  pressureOpportunityStats,
+} from "@/utils/matchPressureStats";
+import {
+  buildDoublesLineup,
+  collectRosterPointPlayerIds,
+  computeTeamSplit,
+  computeTeamStatsAggregate,
+  defaultTeamSplit,
+  formatStatCell,
+  type PlayerProfileLite,
+  type StatKey,
+  type TeamSplitStats,
+} from "@/utils/postMatchDoublesSplit";
 
 type MatchRow = {
   id: string;
@@ -38,369 +52,13 @@ type PointRow = {
   serving_team?: "teamA" | "teamB" | null;
 };
 
-type PlayerProfile = {
-  id: string;
-  first_name: string;
-  last_name: string;
-  nickname: string | null;
-};
-
-type StatKey =
-  | "totalPointsWon"
-  | "winners"
-  | "unforcedErrors"
-  | "forcedErrors"
-  | "aces"
-  | "serviceWinners"
-  | "doubleFaults";
-
-type TeamStats = Record<StatKey, number>;
-
-const defaultStats: TeamStats = {
-  totalPointsWon: 0,
-  winners: 0,
-  unforcedErrors: 0,
-  forcedErrors: 0,
-  aces: 0,
-  serviceWinners: 0,
-  doubleFaults: 0,
-};
-
-type LineupSlot = { id: string | null; label: string };
-
-type SplitStat = { p1: number; p2: number };
-
-type TeamSplitStats = {
-  winners: SplitStat;
-  unforcedErrors: SplitStat;
-  forcedErrors: SplitStat;
-  aces: SplitStat;
-  serviceWinners: SplitStat;
-  doubleFaults: SplitStat;
-};
-
-const defaultSplit: SplitStat = { p1: 0, p2: 0 };
-
-const defaultTeamSplit: TeamSplitStats = {
-  winners: { ...defaultSplit },
-  unforcedErrors: { ...defaultSplit },
-  forcedErrors: { ...defaultSplit },
-  aces: { ...defaultSplit },
-  serviceWinners: { ...defaultSplit },
-  doubleFaults: { ...defaultSplit },
-};
+type PlayerProfile = PlayerProfileLite;
 
 function matchRulesFromRow(match: MatchRow | null): MatchRules {
   return {
     scoringType: match?.scoring_type === "No-Ad" ? "No-Ad" : "Standard",
     setsFormat: match?.sets_format ?? "Best of 3 Sets",
   };
-}
-
-/** Canonical "first last" for DB strings and matching. */
-function canonicalPlayerName(p: PlayerProfile): string {
-  return `${p.first_name} ${p.last_name}`.trim();
-}
-
-function labelForProfile(p: PlayerProfile, lang: AppLanguage): string {
-  return formatPlayerDisplayName(p.first_name, p.last_name, lang);
-}
-
-function parseTeamLabelSegments(label: string | null): string[] {
-  if (!label?.trim()) return [];
-  return label.split(/\s*\/\s*/).map((s) => s.trim()).filter(Boolean);
-}
-
-function namesRoughlyMatch(segment: string, p: PlayerProfile): boolean {
-  const full = canonicalPlayerName(p).toLowerCase();
-  const nick = (p.nickname ?? "").trim().toLowerCase();
-  const seg = segment.trim().toLowerCase();
-  if (!seg) return false;
-  return full === seg || full.includes(seg) || seg.includes(full) || (nick.length > 0 && nick === seg);
-}
-
-/** Roster UUIDs only (excludes guest placeholder ids from LiveScoring). */
-function collectRosterPointPlayerIds(points: PointRow[]): string[] {
-  const out = new Set<string>();
-  for (const pt of points) {
-    for (const raw of [pt.server_id, pt.action_player_id]) {
-      if (!raw || raw.startsWith("team-a-guest-") || raw.startsWith("team-b-guest-")) continue;
-      out.add(raw);
-    }
-  }
-  return [...out];
-}
-
-function profilesOnTeamSide(teamLabel: string | null, profiles: PlayerProfile[]): PlayerProfile[] {
-  if (!teamLabel?.trim()) return [];
-  return profiles.filter((p) => (teamLabel ?? "").includes(canonicalPlayerName(p)));
-}
-
-function orderDoublesLineup(segments: string[], teamProfiles: PlayerProfile[], lang: AppLanguage): LineupSlot[] {
-  const used = new Set<string>();
-  const slots: LineupSlot[] = [];
-
-  for (const seg of segments) {
-    const match = teamProfiles.find((p) => !used.has(p.id) && namesRoughlyMatch(seg, p));
-    if (match) {
-      used.add(match.id);
-      slots.push({ id: match.id, label: labelForProfile(match, lang) });
-    } else {
-      slots.push({ id: null, label: seg });
-    }
-  }
-
-  const rest = teamProfiles.filter((p) => !used.has(p.id)).sort((a, b) => a.id.localeCompare(b.id));
-  for (const p of rest) {
-    if (slots.length >= 2) break;
-    slots.push({ id: p.id, label: labelForProfile(p, lang) });
-  }
-
-  while (slots.length < 2 && segments[slots.length]) {
-    slots.push({ id: null, label: segments[slots.length] });
-  }
-
-  while (slots.length < 2) {
-    slots.push({ id: null, label: "—" });
-  }
-
-  return slots.slice(0, 2);
-}
-
-function buildDoublesLineup(
-  teamLabel: string | null,
-  profiles: PlayerProfile[],
-  points: PointRow[],
-  side: "teamA" | "teamB",
-  lang: AppLanguage,
-): LineupSlot[] {
-  const segments = parseTeamLabelSegments(teamLabel);
-  const onSide = profilesOnTeamSide(teamLabel, profiles);
-  if (segments.length >= 2) {
-    return orderDoublesLineup(segments, onSide, lang);
-  }
-
-  const inferredIds = new Set<string>();
-  for (const pt of points) {
-    const tid = side === "teamA" ? "teamA" : "teamB";
-    const wt = pt.point_winner_team;
-    const et = pt.ending_type;
-    if (!wt || !et) continue;
-    let actionTeam: "teamA" | "teamB" | null = null;
-    if (et === "Winner" || et === "Ace" || et === "Service Winner") actionTeam = wt;
-    else if (et === "Unforced Error" || et === "Forced Error" || et === "Double Fault") actionTeam = wt === "teamA" ? "teamB" : "teamA";
-
-    if (actionTeam !== tid) continue;
-    if (pt.action_player_id && !pt.action_player_id.startsWith("team-")) inferredIds.add(pt.action_player_id);
-    if (et === "Ace" || et === "Service Winner" || et === "Double Fault") {
-      if (pt.server_id && !pt.server_id.startsWith("team-")) inferredIds.add(pt.server_id);
-    }
-  }
-
-  const byInference = [...inferredIds]
-    .map((id) => profiles.find((p) => p.id === id))
-    .filter((p): p is PlayerProfile => p !== undefined && onSide.some((x) => x.id === p.id))
-    .sort((a, b) => a.id.localeCompare(b.id));
-
-  if (byInference.length >= 2) {
-    return byInference.slice(0, 2).map((p) => ({ id: p.id, label: labelForProfile(p, lang) }));
-  }
-
-  if (onSide.length >= 2) {
-    return onSide.slice(0, 2).map((p) => ({ id: p.id, label: labelForProfile(p, lang) }));
-  }
-
-  if (byInference.length === 1 && onSide.length === 1) {
-    const a = byInference[0];
-    const b = onSide.find((p) => p.id !== a.id);
-    if (b)
-      return [{ id: a.id, label: labelForProfile(a, lang) }, { id: b.id, label: labelForProfile(b, lang) }].sort((x, y) =>
-        x.label.localeCompare(y.label),
-      );
-    return [{ id: a.id, label: labelForProfile(a, lang) }, { id: null, label: "—" }];
-  }
-
-  if (byInference.length === 1) {
-    return [{ id: byInference[0].id, label: labelForProfile(byInference[0], lang) }, { id: null, label: "—" }];
-  }
-
-  if (onSide.length === 1) {
-    return [{ id: onSide[0].id, label: labelForProfile(onSide[0], lang) }, { id: null, label: "—" }];
-  }
-
-  return [
-    { id: null, label: segments[0] ?? "—" },
-    { id: null, label: segments[1] ?? "—" },
-  ];
-}
-
-function countStatForPlayer(
-  points: PointRow[],
-  playerId: string | null,
-  kind: "winner" | "ace" | "serviceWinner" | "unforced" | "forced" | "df",
-  creditedTeam: "teamA" | "teamB",
-): number {
-  if (!playerId) return 0;
-  return points.reduce((acc, pt) => {
-    if (pt.action_player_id !== playerId) return acc;
-    const wt = pt.point_winner_team;
-    if (!wt) return acc;
-    if (kind === "winner") {
-      if (pt.ending_type === "Winner" && wt === creditedTeam) return acc + 1;
-    } else if (kind === "ace") {
-      if (pt.ending_type === "Ace" && wt === creditedTeam) return acc + 1;
-    } else if (kind === "serviceWinner") {
-      if (pt.ending_type === "Service Winner" && wt === creditedTeam) return acc + 1;
-    } else if (kind === "unforced") {
-      if (pt.ending_type === "Unforced Error" && wt !== creditedTeam) return acc + 1;
-    } else if (kind === "forced") {
-      if (pt.ending_type === "Forced Error" && wt !== creditedTeam) return acc + 1;
-    } else if (kind === "df") {
-      if (pt.ending_type === "Double Fault" && wt !== creditedTeam) return acc + 1;
-    }
-    return acc;
-  }, 0);
-}
-
-function computeTeamSplit(points: PointRow[], lineup: LineupSlot[], side: "teamA" | "teamB"): TeamSplitStats {
-  const id1 = lineup[0]?.id ?? null;
-  const id2 = lineup[1]?.id ?? null;
-  const team = side;
-  return {
-    winners: {
-      p1: countStatForPlayer(points, id1, "winner", team),
-      p2: countStatForPlayer(points, id2, "winner", team),
-    },
-    aces: {
-      p1: countStatForPlayer(points, id1, "ace", team),
-      p2: countStatForPlayer(points, id2, "ace", team),
-    },
-    serviceWinners: {
-      p1: countStatForPlayer(points, id1, "serviceWinner", team),
-      p2: countStatForPlayer(points, id2, "serviceWinner", team),
-    },
-    unforcedErrors: {
-      p1: countStatForPlayer(points, id1, "unforced", team),
-      p2: countStatForPlayer(points, id2, "unforced", team),
-    },
-    forcedErrors: {
-      p1: countStatForPlayer(points, id1, "forced", team),
-      p2: countStatForPlayer(points, id2, "forced", team),
-    },
-    doubleFaults: {
-      p1: countStatForPlayer(points, id1, "df", team),
-      p2: countStatForPlayer(points, id2, "df", team),
-    },
-  };
-}
-
-function splitSum(s: SplitStat): number {
-  return s.p1 + s.p2;
-}
-
-const splitKeys: Array<keyof TeamSplitStats> = [
-  "winners",
-  "unforcedErrors",
-  "forcedErrors",
-  "aces",
-  "serviceWinners",
-  "doubleFaults",
-];
-
-function pressureOpportunityStats(points: PointRow[]) {
-  let oppA = 0;
-  let convA = 0;
-  let oppB = 0;
-  let convB = 0;
-  let savedA = 0;
-  let savedB = 0;
-
-  for (const pt of points) {
-    if (!pt.is_break_point || !pt.serving_team || !pt.point_winner_team) continue;
-
-    const receiverTeam: "teamA" | "teamB" = pt.serving_team === "teamA" ? "teamB" : "teamA";
-
-    if (receiverTeam === "teamA") {
-      oppA += 1;
-      if (pt.point_winner_team === "teamA") convA += 1;
-    } else {
-      oppB += 1;
-      if (pt.point_winner_team === "teamB") convB += 1;
-    }
-
-    if (pt.serving_team === "teamA" && pt.point_winner_team === "teamA") savedA += 1;
-    if (pt.serving_team === "teamB" && pt.point_winner_team === "teamB") savedB += 1;
-  }
-
-  return {
-    teamA: { converted: convA, opportunities: oppA, saved: savedA },
-    teamB: { converted: convB, opportunities: oppB, saved: savedB },
-  };
-}
-
-function conversionHighlightRates(
-  convA: number,
-  oppA: number,
-  convB: number,
-  oppB: number,
-): { aGreen: boolean; bGreen: boolean } {
-  const rate = (c: number, o: number) => (o === 0 ? null : c / o);
-  const rA = rate(convA, oppA);
-  const rB = rate(convB, oppB);
-  let aGreen = false;
-  let bGreen = false;
-  if (rA !== null && rB !== null) {
-    if (rA > rB) aGreen = true;
-    else if (rB > rA) bGreen = true;
-  } else if (rA !== null && rB === null) {
-    aGreen = true;
-  } else if (rB !== null && rA === null) {
-    bGreen = true;
-  }
-  return { aGreen, bGreen };
-}
-
-/** Match point = that team wins the match if they win this point (server or receiver). Requires match_point_team_* from logging. */
-function matchPointTeamStats(points: PointRow[]) {
-  let oppA = 0;
-  let convA = 0;
-  let oppB = 0;
-  let convB = 0;
-
-  for (const pt of points) {
-    if (!pt.point_winner_team) continue;
-    if (pt.match_point_team_a === true) {
-      oppA += 1;
-      if (pt.point_winner_team === "teamA") convA += 1;
-    }
-    if (pt.match_point_team_b === true) {
-      oppB += 1;
-      if (pt.point_winner_team === "teamB") convB += 1;
-    }
-  }
-
-  return {
-    teamA: { converted: convA, opportunities: oppA, saved: 0 },
-    teamB: { converted: convB, opportunities: oppB, saved: 0 },
-  };
-}
-
-function formatStatCell(
-  key: StatKey,
-  side: "A" | "B",
-  teamStats: { teamA: TeamStats; teamB: TeamStats },
-  useSplitCells: boolean,
-  splitA: TeamSplitStats,
-  splitB: TeamSplitStats,
-): string {
-  const agg = side === "A" ? teamStats.teamA[key] : teamStats.teamB[key];
-  if (key === "totalPointsWon" || !useSplitCells || !splitKeys.includes(key as keyof TeamSplitStats)) {
-    return String(agg);
-  }
-  const sp = side === "A" ? splitA[key as keyof TeamSplitStats] : splitB[key as keyof TeamSplitStats];
-  const sum = splitSum(sp);
-  if (sum === 0 && agg > 0) return String(agg);
-  return `${sp.p1} / ${sp.p2}`;
 }
 
 export default function MatchStatsPage() {
@@ -496,31 +154,7 @@ export default function MatchStatsPage() {
     void loadMatchStats();
   }, [matchId, router]);
 
-  const stats = useMemo(() => {
-    const teamA = { ...defaultStats };
-    const teamB = { ...defaultStats };
-
-    for (const point of points) {
-      if (point.point_winner_team === "teamA") teamA.totalPointsWon += 1;
-      if (point.point_winner_team === "teamB") teamB.totalPointsWon += 1;
-
-      if (point.ending_type === "Ace" && point.point_winner_team === "teamA") teamA.aces += 1;
-      if (point.ending_type === "Ace" && point.point_winner_team === "teamB") teamB.aces += 1;
-      if (point.ending_type === "Service Winner" && point.point_winner_team === "teamA") teamA.serviceWinners += 1;
-      if (point.ending_type === "Service Winner" && point.point_winner_team === "teamB") teamB.serviceWinners += 1;
-      if (point.ending_type === "Winner" && point.point_winner_team === "teamA") teamA.winners += 1;
-      if (point.ending_type === "Winner" && point.point_winner_team === "teamB") teamB.winners += 1;
-
-      if (point.ending_type === "Double Fault" && point.point_winner_team === "teamB") teamA.doubleFaults += 1;
-      if (point.ending_type === "Double Fault" && point.point_winner_team === "teamA") teamB.doubleFaults += 1;
-      if (point.ending_type === "Unforced Error" && point.point_winner_team === "teamB") teamA.unforcedErrors += 1;
-      if (point.ending_type === "Unforced Error" && point.point_winner_team === "teamA") teamB.unforcedErrors += 1;
-      if (point.ending_type === "Forced Error" && point.point_winner_team === "teamB") teamA.forcedErrors += 1;
-      if (point.ending_type === "Forced Error" && point.point_winner_team === "teamA") teamB.forcedErrors += 1;
-    }
-
-    return { teamA, teamB };
-  }, [points]);
+  const stats = useMemo(() => computeTeamStatsAggregate(points), [points]);
 
   const breakPointStats = useMemo(() => pressureOpportunityStats(points), [points]);
 

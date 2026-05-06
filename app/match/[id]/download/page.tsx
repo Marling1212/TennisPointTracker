@@ -8,11 +8,27 @@ import { useLanguage } from "@/components/LanguageContext";
 import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
 import { formatSetGamesScoreBeforeGameIndex } from "@/utils/setGamesScoreLabel";
 import { resolveShotMakerDisplayName } from "@/utils/pointShotMakerName";
+import {
+  matchPointTeamStats,
+  pressureOpportunityStats,
+} from "@/utils/matchPressureStats";
+import {
+  buildDoublesLineup,
+  collectRosterPointPlayerIds,
+  computeTeamSplit,
+  computeTeamStatsAggregate,
+  defaultTeamSplit,
+  formatStatCell,
+  type PlayerProfileLite,
+  type StatKey,
+} from "@/utils/postMatchDoublesSplit";
 
 type TeamTag = "teamA" | "teamB";
 
 type MatchRow = {
   id: string;
+  match_type: "Singles" | "Doubles" | null;
+  team_id: string | null;
   team_a_name: string | null;
   team_b_name: string | null;
   score_summary: string | null;
@@ -30,12 +46,10 @@ type PointRow = {
   stroke_type: "Forehand" | "Backhand" | "Volley" | "Overhead" | null;
   ending_type: "Winner" | "Unforced Error" | "Forced Error" | "Ace" | "Service Winner" | "Double Fault" | null;
   serving_team?: TeamTag | null;
-};
-
-type PlayerRow = {
-  id: string;
-  first_name: string;
-  last_name: string;
+  is_break_point?: boolean | null;
+  is_match_point?: boolean | null;
+  match_point_team_a?: boolean | null;
+  match_point_team_b?: boolean | null;
 };
 
 type GameGroup = {
@@ -134,7 +148,7 @@ export default function MatchDownloadPage() {
 
   const [match, setMatch] = useState<MatchRow | null>(null);
   const [points, setPoints] = useState<PointRow[]>([]);
-  const [players, setPlayers] = useState<Record<string, PlayerRow>>({});
+  const [playerProfiles, setPlayerProfiles] = useState<PlayerProfileLite[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -150,7 +164,7 @@ export default function MatchDownloadPage() {
 
       const { data: matchData, error: matchError } = await supabase
         .from("matches")
-        .select("id, team_a_name, team_b_name, score_summary, status, setup_json")
+        .select("id, match_type, team_id, team_a_name, team_b_name, score_summary, status, setup_json")
         .eq("id", matchId)
         .maybeSingle();
       if (matchError || !matchData) {
@@ -163,7 +177,7 @@ export default function MatchDownloadPage() {
       const { data: pointRows, error: pointError } = await supabase
         .from("points")
         .select(
-          "id, created_at, start_score, point_winner_team, server_id, action_player_id, stroke_type, ending_type, serving_team",
+          "id, created_at, start_score, point_winner_team, server_id, action_player_id, stroke_type, ending_type, serving_team, is_break_point, is_match_point, match_point_team_a, match_point_team_b",
         )
         .eq("match_id", matchId)
         .order("created_at", { ascending: true });
@@ -175,20 +189,37 @@ export default function MatchDownloadPage() {
       const pointList = (pointRows ?? []) as PointRow[];
       setPoints(pointList);
 
-      const ids = new Set<string>();
-      for (const pt of pointList) {
-        if (pt.server_id) ids.add(pt.server_id);
-        if (pt.action_player_id) ids.add(pt.action_player_id);
-      }
-      if (ids.size > 0) {
-        const { data: playerRows } = await supabase
+      const matchRow = matchData as MatchRow;
+      const rosterIds = collectRosterPointPlayerIds(pointList);
+      const profileMap = new Map<string, PlayerProfileLite>();
+
+      if (rosterIds.length > 0) {
+        const { data: playerRows, error: playersError } = await supabase
           .from("players")
-          .select("id, first_name, last_name")
-          .in("id", [...ids]);
-        const next: Record<string, PlayerRow> = {};
-        for (const p of (playerRows ?? []) as PlayerRow[]) next[p.id] = p;
-        setPlayers(next);
+          .select("id, first_name, last_name, nickname")
+          .in("id", rosterIds);
+        if (playersError) {
+          setErrorMessage(playersError.message);
+          setIsLoading(false);
+          return;
+        }
+        for (const p of (playerRows ?? []) as PlayerProfileLite[]) profileMap.set(p.id, p);
       }
+
+      if (matchRow.match_type === "Doubles" && matchRow.team_id) {
+        const { data: rosterRows, error: rosterError } = await supabase
+          .from("players")
+          .select("id, first_name, last_name, nickname")
+          .eq("team_id", matchRow.team_id);
+        if (rosterError) {
+          setErrorMessage(rosterError.message);
+          setIsLoading(false);
+          return;
+        }
+        for (const p of (rosterRows ?? []) as PlayerProfileLite[]) profileMap.set(p.id, p);
+      }
+
+      setPlayerProfiles([...profileMap.values()]);
 
       setIsLoading(false);
     };
@@ -196,6 +227,14 @@ export default function MatchDownloadPage() {
   }, [matchId, t]);
 
   const sets = useMemo(() => groupPointsIntoSetsAndGames(points), [points]);
+
+  const players = useMemo(() => {
+    const m: Record<string, { first_name: string; last_name: string }> = {};
+    for (const p of playerProfiles) {
+      m[p.id] = { first_name: p.first_name, last_name: p.last_name };
+    }
+    return m;
+  }, [playerProfiles]);
 
   const setupPlayersByTeam = useMemo(() => {
     const setup = (match?.setup_json ?? {}) as {
@@ -245,27 +284,58 @@ export default function MatchDownloadPage() {
     ],
   );
 
-  const stats = useMemo(() => {
-    const out = {
-      teamA: { total: 0, winners: 0, aces: 0, ues: 0, fes: 0, dfs: 0 },
-      teamB: { total: 0, winners: 0, aces: 0, ues: 0, fes: 0, dfs: 0 },
-    };
-    for (const p of points) {
-      if (p.point_winner_team === "teamA") out.teamA.total += 1;
-      if (p.point_winner_team === "teamB") out.teamB.total += 1;
-      if (p.ending_type === "Winner" && p.point_winner_team === "teamA") out.teamA.winners += 1;
-      if (p.ending_type === "Winner" && p.point_winner_team === "teamB") out.teamB.winners += 1;
-      if (p.ending_type === "Ace" && p.point_winner_team === "teamA") out.teamA.aces += 1;
-      if (p.ending_type === "Ace" && p.point_winner_team === "teamB") out.teamB.aces += 1;
-      if (p.ending_type === "Unforced Error" && p.point_winner_team === "teamB") out.teamA.ues += 1;
-      if (p.ending_type === "Unforced Error" && p.point_winner_team === "teamA") out.teamB.ues += 1;
-      if (p.ending_type === "Forced Error" && p.point_winner_team === "teamB") out.teamA.fes += 1;
-      if (p.ending_type === "Forced Error" && p.point_winner_team === "teamA") out.teamB.fes += 1;
-      if (p.ending_type === "Double Fault" && p.point_winner_team === "teamB") out.teamA.dfs += 1;
-      if (p.ending_type === "Double Fault" && p.point_winner_team === "teamA") out.teamB.dfs += 1;
-    }
-    return out;
-  }, [points]);
+  const stats = useMemo(() => computeTeamStatsAggregate(points), [points]);
+
+  const breakPointStats = useMemo(() => pressureOpportunityStats(points), [points]);
+
+  const matchPointStats = useMemo(() => matchPointTeamStats(points), [points]);
+
+  const isDoubles = match?.match_type === "Doubles";
+
+  const lineupA = useMemo(
+    () =>
+      isDoubles ? buildDoublesLineup(match?.team_a_name ?? null, playerProfiles, points, "teamA", language) : [],
+    [isDoubles, match?.team_a_name, playerProfiles, points, language],
+  );
+
+  const lineupB = useMemo(
+    () =>
+      isDoubles ? buildDoublesLineup(match?.team_b_name ?? null, playerProfiles, points, "teamB", language) : [],
+    [isDoubles, match?.team_b_name, playerProfiles, points, language],
+  );
+
+  const splitA = useMemo(
+    () => (isDoubles && lineupA.length === 2 ? computeTeamSplit(points, lineupA, "teamA") : defaultTeamSplit),
+    [isDoubles, lineupA, points],
+  );
+
+  const splitB = useMemo(
+    () => (isDoubles && lineupB.length === 2 ? computeTeamSplit(points, lineupB, "teamB") : defaultTeamSplit),
+    [isDoubles, lineupB, points],
+  );
+
+  const hasActionAttribution = useMemo(() => points.some((p) => p.action_player_id != null), [points]);
+
+  const useSplitCells =
+    isDoubles && hasActionAttribution && lineupA.length === 2 && lineupB.length === 2;
+
+  const teamAHeader =
+    isDoubles && lineupA.length >= 2 ? `${lineupA[0].label} / ${lineupA[1].label}` : (match?.team_a_name ?? "Team A");
+  const teamBHeader =
+    isDoubles && lineupB.length >= 2 ? `${lineupB[0].label} / ${lineupB[1].label}` : (match?.team_b_name ?? "Team B");
+
+  const statRows = useMemo<Array<{ key: StatKey; label: string }>>(
+    () => [
+      { key: "totalPointsWon", label: t("Total Points Won") },
+      { key: "winners", label: t("Winners") },
+      { key: "unforcedErrors", label: t("Unforced Errors") },
+      { key: "forcedErrors", label: t("Forced Errors") },
+      { key: "aces", label: t("Aces") },
+      { key: "serviceWinners", label: t("Service winners") },
+      { key: "doubleFaults", label: t("Double Faults") },
+    ],
+    [t],
+  );
 
   if (isLoading) {
     return <main className="flex flex-1 items-center justify-center px-4 py-6">{t("Loading match review...")}</main>;
@@ -296,24 +366,35 @@ export default function MatchDownloadPage() {
       <section className="mt-4 rounded-xl border border-slate-300 p-3">
         <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">{t("Post-Match Stats")}</h2>
         <div className="mt-2 grid grid-cols-3 gap-2 text-xs font-semibold text-slate-700">
-          <p>{match?.team_a_name ?? "Team A"}</p>
+          <p className="leading-snug">{teamAHeader}</p>
           <p className="text-center">{t("Stat")}</p>
-          <p className="text-right">{match?.team_b_name ?? "Team B"}</p>
+          <p className="text-right leading-snug">{teamBHeader}</p>
         </div>
-        {[
-          ["total", t("Total Points Won")],
-          ["winners", t("Winners")],
-          ["aces", t("Aces")],
-          ["ues", t("Unforced Errors")],
-          ["fes", t("Forced Errors")],
-          ["dfs", t("Double Faults")],
-        ].map(([key, label]) => (
-          <div key={key} className="mt-1 grid grid-cols-3 text-sm">
-            <p>{String(stats.teamA[key as keyof typeof stats.teamA])}</p>
-            <p className="text-center">{label}</p>
-            <p className="text-right">{String(stats.teamB[key as keyof typeof stats.teamB])}</p>
+        {statRows.map((row) => (
+          <div key={row.key} className="mt-1 grid grid-cols-3 text-sm">
+            <p>{formatStatCell(row.key, "A", stats, useSplitCells, splitA, splitB)}</p>
+            <p className="text-center">{row.label}</p>
+            <p className="text-right">{formatStatCell(row.key, "B", stats, useSplitCells, splitA, splitB)}</p>
           </div>
         ))}
+        <div className="mt-1 grid grid-cols-3 text-sm border-t border-slate-200 pt-1">
+          <p>
+            {breakPointStats.teamA.converted} / {breakPointStats.teamA.opportunities}
+          </p>
+          <p className="text-center">{t("Break Points")}</p>
+          <p className="text-right">
+            {breakPointStats.teamB.converted} / {breakPointStats.teamB.opportunities}
+          </p>
+        </div>
+        <div className="mt-1 grid grid-cols-3 text-sm">
+          <p>
+            {matchPointStats.teamA.converted} / {matchPointStats.teamA.opportunities}
+          </p>
+          <p className="text-center">{t("Match Points")}</p>
+          <p className="text-right">
+            {matchPointStats.teamB.converted} / {matchPointStats.teamB.opportunities}
+          </p>
+        </div>
       </section>
 
       <section className="mt-4">
