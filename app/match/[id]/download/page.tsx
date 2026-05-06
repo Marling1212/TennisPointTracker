@@ -347,8 +347,8 @@ export default function MatchDownloadPage() {
                         const shotBy = resolveShotMakerDisplayName(pt, shotMakerCtx);
                         return (
                           <p key={pt.id}>
-                            {pt.start_score ?? "—"} · {t("Point winner")}: {winnerName} · {t("How won")}: {winMethod} ·{" "}
-                            {t("Shot by")}: {shotBy}
+                            {pt.start_score ?? "—"} · {t("Point winner")}: {winnerName} · {t("How won")}: {shotBy}{" "}
+                            {winMethod}
                           </p>
                         );
                       })}

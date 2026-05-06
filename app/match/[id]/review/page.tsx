@@ -405,7 +405,7 @@ export default function MatchReviewPage() {
                                       {t("Point winner")}: {winnerName}
                                     </p>
                                     <p className="mt-0.5 text-slate-600">
-                                      {t("How won")}: {winMethod} · {t("Shot by")}: {shotBy}
+                                      {t("How won")}: {shotBy} {winMethod}
                                     </p>
                                   </div>
                                 );
