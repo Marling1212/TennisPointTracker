@@ -308,7 +308,7 @@ export default function MatchDownloadPage() {
                 return (
                   <div key={game.gameNumber} className="mt-2 rounded-lg border border-slate-200 p-2">
                     <p className="text-sm font-semibold">
-                      {t("Game")} {game.gameNumber} · {t("Set games")} {setGamesAtStart} · {t("Server")}: {serverName} ·{" "}
+                      {t("Game")} {game.gameNumber} · {setGamesAtStart} · {t("Server")}: {serverName} ·{" "}
                       {isHold === null ? "—" : isHold ? t("Hold") : t("Break")}
                     </p>
                     <div className="mt-1 space-y-1 text-xs text-slate-700">

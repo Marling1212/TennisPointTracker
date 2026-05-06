@@ -343,9 +343,7 @@ export default function MatchReviewPage() {
                           <div className="min-w-0">
                             <p className="text-sm font-bold text-slate-900">
                               {t("Game")} {game.gameNumber}{" "}
-                              <span className="font-semibold text-slate-600">
-                                · {t("Set games")} {setGamesAtStart}
-                              </span>
+                              <span className="font-semibold text-slate-600">· {setGamesAtStart}</span>
                             </p>
                             <p className="text-xs text-slate-600">
                               {t("Server")}: {serverName}
