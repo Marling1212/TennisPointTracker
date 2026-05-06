@@ -7,6 +7,7 @@ import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
 import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
 import { formatSetGamesScoreBeforeGameIndex } from "@/utils/setGamesScoreLabel";
+import { resolveShotMakerDisplayName } from "@/utils/pointShotMakerName";
 
 type TeamTag = "teamA" | "teamB";
 
@@ -284,6 +285,27 @@ export default function MatchReviewPage() {
     setOpenGames((prev) => ({ ...prev, [gameNumber]: !prev[gameNumber] }));
   };
 
+  const shotMakerCtx = useMemo(
+    () => ({
+      players,
+      language,
+      teamALabel: match?.team_a_name ?? "Team A",
+      teamBLabel: match?.team_b_name ?? "Team B",
+      setupTeamA: setupPlayersByTeam.teamA,
+      setupTeamB: setupPlayersByTeam.teamB,
+      unknownLabel: t("Unknown"),
+    }),
+    [
+      players,
+      language,
+      match?.team_a_name,
+      match?.team_b_name,
+      setupPlayersByTeam.teamA,
+      setupPlayersByTeam.teamB,
+      t,
+    ],
+  );
+
   if (isLoading) {
     return (
       <main className="flex flex-1 items-center justify-center bg-white px-4 py-6">
@@ -374,6 +396,7 @@ export default function MatchReviewPage() {
                                 const strokeText = pt.stroke_type ? t(pt.stroke_type) : "";
                                 const endingText = endingLabel(pt.ending_type, t);
                                 const winMethod = `${strokeText}${strokeText && endingText ? " " : ""}${endingText}`.trim() || "—";
+                                const shotBy = resolveShotMakerDisplayName(pt, shotMakerCtx);
 
                                 return (
                                   <div key={pt.id} className="rounded-md border border-slate-200 bg-white px-2 py-2 text-xs">
@@ -382,7 +405,7 @@ export default function MatchReviewPage() {
                                       {t("Point winner")}: {winnerName}
                                     </p>
                                     <p className="mt-0.5 text-slate-600">
-                                      {t("How won")}: {winMethod}
+                                      {t("How won")}: {winMethod} · {t("Shot by")}: {shotBy}
                                     </p>
                                   </div>
                                 );

@@ -7,6 +7,7 @@ import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
 import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
 import { formatSetGamesScoreBeforeGameIndex } from "@/utils/setGamesScoreLabel";
+import { resolveShotMakerDisplayName } from "@/utils/pointShotMakerName";
 
 type TeamTag = "teamA" | "teamB";
 
@@ -223,6 +224,27 @@ export default function MatchDownloadPage() {
     return t("Unknown");
   };
 
+  const shotMakerCtx = useMemo(
+    () => ({
+      players,
+      language,
+      teamALabel: match?.team_a_name ?? "Team A",
+      teamBLabel: match?.team_b_name ?? "Team B",
+      setupTeamA: setupPlayersByTeam.teamA,
+      setupTeamB: setupPlayersByTeam.teamB,
+      unknownLabel: t("Unknown"),
+    }),
+    [
+      players,
+      language,
+      match?.team_a_name,
+      match?.team_b_name,
+      setupPlayersByTeam.teamA,
+      setupPlayersByTeam.teamB,
+      t,
+    ],
+  );
+
   const stats = useMemo(() => {
     const out = {
       teamA: { total: 0, winners: 0, aces: 0, ues: 0, fes: 0, dfs: 0 },
@@ -322,9 +344,11 @@ export default function MatchDownloadPage() {
                         const strokeText = pt.stroke_type ? t(pt.stroke_type) : "";
                         const endingText = endingLabel(pt.ending_type, t);
                         const winMethod = `${strokeText}${strokeText && endingText ? " " : ""}${endingText}`.trim() || "—";
+                        const shotBy = resolveShotMakerDisplayName(pt, shotMakerCtx);
                         return (
                           <p key={pt.id}>
-                            {pt.start_score ?? "—"} · {t("Point winner")}: {winnerName} · {t("How won")}: {winMethod}
+                            {pt.start_score ?? "—"} · {t("Point winner")}: {winnerName} · {t("How won")}: {winMethod} ·{" "}
+                            {t("Shot by")}: {shotBy}
                           </p>
                         );
                       })}
