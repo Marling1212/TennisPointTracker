@@ -12,6 +12,7 @@ type TeamTag = "teamA" | "teamB";
 type MatchRow = {
   team_a_name: string | null;
   team_b_name: string | null;
+  setup_json?: unknown | null;
 };
 
 type PointRow = {
@@ -159,7 +160,7 @@ export default function MatchReviewPage() {
 
       const { data: matchData, error: matchError } = await supabase
         .from("matches")
-        .select("team_a_name, team_b_name")
+        .select("team_a_name, team_b_name, setup_json")
         .eq("id", matchId)
         .maybeSingle();
 
@@ -223,11 +224,59 @@ export default function MatchReviewPage() {
 
   const sets = useMemo(() => groupPointsIntoSetsAndGames(points), [points]);
 
-  const getPlayerName = (playerId: string | null): string => {
-    if (!playerId) return t("Unknown");
-    const p = players[playerId];
-    if (!p) return t("Unknown");
-    return formatPlayerDisplayName(p.first_name, p.last_name, language);
+  const setupPlayersByTeam = useMemo(() => {
+    const setup = (match?.setup_json ?? {}) as {
+      teamAPlayers?: Array<{
+        name?: string;
+        firstName?: string;
+        lastName?: string;
+        first_name?: string;
+        last_name?: string;
+      }>;
+      teamBPlayers?: Array<{
+        name?: string;
+        firstName?: string;
+        lastName?: string;
+        first_name?: string;
+        last_name?: string;
+      }>;
+    };
+
+    const toDisplayName = (raw: {
+      name?: string;
+      firstName?: string;
+      lastName?: string;
+      first_name?: string;
+      last_name?: string;
+    }): string => {
+      const first = raw.firstName ?? raw.first_name ?? "";
+      const last = raw.lastName ?? raw.last_name ?? "";
+      if (first || last) return formatPlayerDisplayName(first, last, language);
+      return raw.name?.trim() ?? "";
+    };
+
+    return {
+      teamA: (setup.teamAPlayers ?? []).map(toDisplayName).filter(Boolean),
+      teamB: (setup.teamBPlayers ?? []).map(toDisplayName).filter(Boolean),
+    };
+  }, [match?.setup_json, language]);
+
+  const getServerName = (serverId: string | null, serverTeam: TeamTag | null): string => {
+    if (serverId) {
+      const p = players[serverId];
+      if (p) return formatPlayerDisplayName(p.first_name, p.last_name, language);
+    }
+
+    if (serverTeam === "teamA") {
+      if (setupPlayersByTeam.teamA.length === 1) return setupPlayersByTeam.teamA[0];
+      return match?.team_a_name ?? "Team A";
+    }
+    if (serverTeam === "teamB") {
+      if (setupPlayersByTeam.teamB.length === 1) return setupPlayersByTeam.teamB[0];
+      return match?.team_b_name ?? "Team B";
+    }
+
+    return t("Unknown");
   };
 
   const toggleGame = (gameNumber: number) => {
@@ -278,7 +327,7 @@ export default function MatchReviewPage() {
                 <div className="divide-y-2 divide-slate-200">
                   {setGroup.games.map((game) => {
                     const isOpen = Boolean(openGames[game.gameNumber]);
-                    const serverName = getPlayerName(game.serverId);
+                    const serverName = getServerName(game.serverId, game.serverTeam);
                     const isHold =
                       game.serverTeam !== null && game.winnerTeam !== null ? game.serverTeam === game.winnerTeam : null;
 
