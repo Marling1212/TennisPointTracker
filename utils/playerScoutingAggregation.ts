@@ -1,3 +1,5 @@
+import { playerNameMatchVariants } from "@/lib/playerNameFormat";
+
 export type StrokeBucket = "Forehand" | "Backhand" | "Volley" | "Overhead";
 
 /** Points attributed to you but stroke not set (e.g. ace, or older logs). */
@@ -144,12 +146,19 @@ export function playerSideInMatch(
   teamAName: string | null,
   teamBName: string | null,
   clubTeamName: string,
-  playerFullName: string,
+  playerFirstName: string,
+  playerLastName: string,
 ): "teamA" | "teamB" | null {
   const a = teamAName ?? "";
   const b = teamBName ?? "";
-  const aSide = a.includes(playerFullName) || a === clubTeamName;
-  const bSide = b.includes(playerFullName) || b === clubTeamName;
+  const aLc = a.toLowerCase();
+  const bLc = b.toLowerCase();
+  const variantMatch = (labelLc: string): boolean =>
+    playerNameMatchVariants(playerFirstName, playerLastName).some(
+      (v) => v.length > 0 && labelLc.includes(v.toLowerCase()),
+    );
+  const aSide = variantMatch(aLc) || a === clubTeamName;
+  const bSide = variantMatch(bLc) || b === clubTeamName;
   if (aSide && bSide) return null;
   if (aSide) return "teamA";
   if (bSide) return "teamB";

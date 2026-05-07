@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
-import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
+import { formatPlayerDisplayName, playerNameMatchVariants } from "@/lib/playerNameFormat";
 import {
   aggregateStrokeBreakdown,
   clutchBreakPointRates,
@@ -290,14 +290,15 @@ export default function PlayerScoutingReportPage() {
         return;
       }
 
-      const fullName = `${(playerData as PlayerRow).first_name} ${(playerData as PlayerRow).last_name}`.trim();
+      const rosterFirst = (playerData as PlayerRow).first_name;
+      const rosterLast = (playerData as PlayerRow).last_name;
       const clubName = teamData.name;
+      const nameVariants = playerNameMatchVariants(rosterFirst, rosterLast);
       const playedMatches = ((matchesData ?? []) as MatchRow[]).filter((m) => {
         const a = m.team_a_name ?? "";
         const b = m.team_b_name ?? "";
         return (
-          a.includes(fullName) ||
-          b.includes(fullName) ||
+          nameVariants.some((v) => (v.length > 0 && a.includes(v)) || (v.length > 0 && b.includes(v))) ||
           a === clubName ||
           b === clubName
         );
@@ -345,16 +346,15 @@ export default function PlayerScoutingReportPage() {
 
   const filteredMatchIds = useMemo(() => new Set(filteredMatches.map((m) => m.id)), [filteredMatches]);
 
-  const playerFullName = player ? `${player.first_name} ${player.last_name}`.trim() : "";
-
   const playerSideByMatchId = useMemo(() => {
     const map = new Map<string, "teamA" | "teamB">();
+    if (!player) return map;
     for (const m of filteredMatches) {
-      const side = playerSideInMatch(m.team_a_name, m.team_b_name, teamName, playerFullName);
+      const side = playerSideInMatch(m.team_a_name, m.team_b_name, teamName, player.first_name, player.last_name);
       if (side) map.set(m.id, side);
     }
     return map;
-  }, [filteredMatches, teamName, playerFullName]);
+  }, [filteredMatches, player, teamName]);
 
   const matchRulesByMatchId = useMemo(() => {
     const map = new Map<string, MatchRules>();

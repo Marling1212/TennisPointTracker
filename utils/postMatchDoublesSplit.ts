@@ -1,5 +1,5 @@
 import type { AppLanguage } from "@/lib/translations";
-import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
+import { formatPlayerDisplayName, playerNameMatchVariants } from "@/lib/playerNameFormat";
 
 /** Point fields required for attribution splits (matches `points` table rows used on stats/download). */
 export type StatsSplitPointRow = {
@@ -69,10 +69,6 @@ export const defaultTeamSplit: TeamSplitStats = {
   doubleFaults: { ...defaultSplit },
 };
 
-function canonicalPlayerName(p: PlayerProfileLite): string {
-  return `${p.first_name} ${p.last_name}`.trim();
-}
-
 export function labelForProfile(p: PlayerProfileLite, lang: AppLanguage): string {
   return formatPlayerDisplayName(p.first_name, p.last_name, lang);
 }
@@ -83,11 +79,14 @@ function parseTeamLabelSegments(label: string | null): string[] {
 }
 
 function namesRoughlyMatch(segment: string, p: PlayerProfileLite): boolean {
-  const full = canonicalPlayerName(p).toLowerCase();
   const nick = (p.nickname ?? "").trim().toLowerCase();
   const seg = segment.trim().toLowerCase();
   if (!seg) return false;
-  return full === seg || full.includes(seg) || seg.includes(full) || (nick.length > 0 && nick === seg);
+  for (const variant of playerNameMatchVariants(p.first_name, p.last_name)) {
+    const full = variant.toLowerCase();
+    if (full === seg || full.includes(seg) || seg.includes(full)) return true;
+  }
+  return nick.length > 0 && nick === seg;
 }
 
 /** Roster UUIDs only (excludes guest placeholder ids from LiveScoring). */
@@ -104,7 +103,12 @@ export function collectRosterPointPlayerIds(points: StatsSplitPointRow[]): strin
 
 function profilesOnTeamSide(teamLabel: string | null, profiles: PlayerProfileLite[]): PlayerProfileLite[] {
   if (!teamLabel?.trim()) return [];
-  return profiles.filter((p) => (teamLabel ?? "").includes(canonicalPlayerName(p)));
+  const labelLc = (teamLabel ?? "").toLowerCase();
+  return profiles.filter((p) =>
+    playerNameMatchVariants(p.first_name, p.last_name).some(
+      (v) => v.length > 0 && labelLc.includes(v.toLowerCase()),
+    ),
+  );
 }
 
 function orderDoublesLineup(

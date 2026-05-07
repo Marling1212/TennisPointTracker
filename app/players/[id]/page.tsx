@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
-import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
+import { formatPlayerDisplayName, playerNameMatchVariants } from "@/lib/playerNameFormat";
 import { isPointAttributedToPlayer, playerSideInMatch } from "@/utils/playerScoutingAggregation";
 
 type PlayerRow = {
@@ -117,14 +117,15 @@ export default function PlayerCardPage() {
         return;
       }
 
-      const fullName = `${(playerData as PlayerRow).first_name} ${(playerData as PlayerRow).last_name}`.trim();
+      const rosterFirst = (playerData as PlayerRow).first_name;
+      const rosterLast = (playerData as PlayerRow).last_name;
       const clubName = teamData.name;
+      const nameVariants = playerNameMatchVariants(rosterFirst, rosterLast);
       const playedMatches = ((matchesData ?? []) as MatchRow[]).filter((m) => {
         const a = m.team_a_name ?? "";
         const b = m.team_b_name ?? "";
         return (
-          a.includes(fullName) ||
-          b.includes(fullName) ||
+          nameVariants.some((v) => (v.length > 0 && a.includes(v)) || (v.length > 0 && b.includes(v))) ||
           a === clubName ||
           b === clubName
         );
@@ -188,7 +189,6 @@ export default function PlayerCardPage() {
     const matchMap = new Map(filteredMatches.map((match) => [match.id, match]));
     const relevantPoints = points.filter((point) => matchMap.has(point.match_id));
     const clubTeamName = team?.name ?? "";
-    const fullName = player ? `${player.first_name} ${player.last_name}`.trim() : "";
 
     let wins = 0;
     let losses = 0;
@@ -199,7 +199,9 @@ export default function PlayerCardPage() {
     let doubleFaults = 0;
 
     for (const match of filteredMatches) {
-      const side = playerSideInMatch(match.team_a_name, match.team_b_name, clubTeamName, fullName);
+      const side = player
+        ? playerSideInMatch(match.team_a_name, match.team_b_name, clubTeamName, player.first_name, player.last_name)
+        : null;
 
       if (!side) continue;
 
@@ -224,7 +226,9 @@ export default function PlayerCardPage() {
     for (const point of relevantPoints) {
       const match = matchMap.get(point.match_id);
       if (!match) continue;
-      const side = playerSideInMatch(match.team_a_name, match.team_b_name, clubTeamName, fullName);
+      const side = player
+        ? playerSideInMatch(match.team_a_name, match.team_b_name, clubTeamName, player.first_name, player.last_name)
+        : null;
       if (!side) continue;
 
       const attr = {

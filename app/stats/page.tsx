@@ -8,7 +8,7 @@ import type { MatchRules } from "@/utils/spectatorReplay";
 import { isPointAttributedToPlayer } from "@/utils/playerScoutingAggregation";
 import { hasSupabaseEnv, supabase } from "@/utils/supabase/client";
 import { useLanguage } from "@/components/LanguageContext";
-import { formatPlayerDisplayName } from "@/lib/playerNameFormat";
+import { formatPlayerDisplayName, playerNameMatchVariants } from "@/lib/playerNameFormat";
 
 type ProfileRow = {
   id: string;
@@ -88,26 +88,25 @@ function parseTeamLabelSegments(label: string | null): string[] {
 }
 
 function namesRoughlyMatch(segment: string, firstName: string, lastName: string, nickname: string): boolean {
-  const full = `${firstName} ${lastName}`.trim().toLowerCase();
   const nick = (nickname ?? "").trim().toLowerCase();
   const seg = segment.trim().toLowerCase();
   if (!seg) return false;
-  return (
-    full === seg ||
-    full.includes(seg) ||
-    seg.includes(full) ||
-    (nick.length > 0 && (nick === seg || nick.includes(seg) || seg.includes(nick)))
-  );
+  for (const variant of playerNameMatchVariants(firstName, lastName)) {
+    const full = variant.toLowerCase();
+    if (full === seg || full.includes(seg) || seg.includes(full)) return true;
+  }
+  return nick.length > 0 && (nick === seg || nick.includes(seg) || seg.includes(nick));
 }
 
 /** True if roster name / nickname appears anywhere on that team label (aligns with match `/stats` doubles logic). */
 function labelSuggestsPlayer(label: string | null, firstName: string, lastName: string, nickname: string): boolean {
   const l = (label ?? "").toLowerCase();
-  const full = `${firstName} ${lastName}`.trim().toLowerCase();
   const nick = (nickname ?? "").trim().toLowerCase();
-  if (full && l.includes(full)) return true;
-  if (nick.length > 0 && l.includes(nick)) return true;
-  return false;
+  for (const variant of playerNameMatchVariants(firstName, lastName)) {
+    const full = variant.toLowerCase();
+    if (full && l.includes(full)) return true;
+  }
+  return nick.length > 0 && l.includes(nick);
 }
 
 /** Include a match in this player’s row if they appear on either team line (slash segments or full string). */
@@ -163,8 +162,11 @@ function mySideForPlayerInMatch(
   }
   const fromLabels = sideFromTeamLabelsOnly(match, firstName, lastName, nickname);
   if (fromLabels) return fromLabels;
-  const fullName = `${firstName} ${lastName}`.trim();
-  return (match.team_a_name ?? "").includes(fullName) ? "teamA" : "teamB";
+  const labA = (match.team_a_name ?? "").toLowerCase();
+  for (const v of playerNameMatchVariants(firstName, lastName)) {
+    if (v && labA.includes(v.toLowerCase())) return "teamA";
+  }
+  return "teamB";
 }
 
 export default function TeamStatsPage() {
@@ -358,7 +360,7 @@ export default function TeamStatsPage() {
   const playerStats = useMemo<PlayerStats[]>(() => {
     return players
       .map((player) => {
-        const fullName = `${player.first_name} ${player.last_name}`;
+        const fullName = formatPlayerDisplayName(player.first_name, player.last_name, language);
         const playerMatches = matches.filter((match) =>
           playerAppearsInMatchTeamLabels(match, player.first_name, player.last_name, player.nickname),
         );
@@ -498,7 +500,7 @@ export default function TeamStatsPage() {
         };
       })
       .sort((a, b) => (b[sortKey] as number) - (a[sortKey] as number));
-  }, [matches, players, points, sortKey]);
+  }, [language, matches, players, points, sortKey]);
 
   if (isLoading) {
     return (
