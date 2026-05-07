@@ -308,15 +308,15 @@ export default function MatchReviewPage() {
 
   if (isLoading) {
     return (
-      <main className="flex flex-1 items-center justify-center bg-white px-4 py-6">
+      <main className="flex flex-1 items-center justify-center bg-slate-100 px-4 py-6">
         <p className="text-sm text-slate-900">{t("Loading match review...")}</p>
       </main>
     );
   }
 
   return (
-    <main className="flex flex-1 flex-col bg-white px-4 py-6 text-slate-900">
-      <section className="w-full rounded-2xl border-2 border-slate-300 bg-white p-4 shadow-sm">
+    <main className="flex flex-1 flex-col bg-slate-100 px-4 py-6 text-slate-900">
+      <section className="w-full rounded-2xl border-2 border-slate-300 bg-white p-5 shadow-md">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Link
             href={`/match/${matchId}/stats`}
@@ -341,10 +341,10 @@ export default function MatchReviewPage() {
             {t("No points yet.")}
           </div>
         ) : (
-          <div className="mt-4 space-y-4">
+          <div className="mt-4 space-y-5">
             {sets.map((setGroup) => (
               <section key={setGroup.setNumber} className="rounded-xl border-2 border-slate-300 bg-white">
-                <div className="border-b-2 border-slate-300 px-3 py-2 text-sm font-bold text-slate-900">
+                <div className="sticky top-0 z-10 border-b-2 border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-900">
                   {t("Set")} {setGroup.setNumber}
                 </div>
                 <div className="divide-y-2 divide-slate-200">
@@ -356,11 +356,11 @@ export default function MatchReviewPage() {
                     const setGamesAtStart = formatSetGamesScoreBeforeGameIndex(setGroup.games, idxInSet);
 
                     return (
-                      <article key={game.gameNumber}>
+                      <article key={game.gameNumber} className={game.gameNumber % 2 === 0 ? "bg-slate-50" : "bg-white"}>
                         <button
                           type="button"
                           onClick={() => toggleGame(game.gameNumber)}
-                          className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left hover:bg-slate-50"
+                          className="flex w-full items-center justify-between gap-3 px-3 py-4 text-left hover:bg-slate-100"
                         >
                           <div className="min-w-0">
                             <p className="text-sm font-bold text-slate-900">
@@ -375,16 +375,22 @@ export default function MatchReviewPage() {
                             {isHold === null ? (
                               <p className="text-xs font-semibold text-slate-500">—</p>
                             ) : isHold ? (
-                              <p className="text-xs font-semibold text-slate-700">{t("Hold")}</p>
+                              <p className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
+                                {t("Hold")}
+                              </p>
                             ) : (
-                              <p className="text-xs font-black text-red-500">{t("Break")}</p>
+                              <p className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-black text-rose-700">
+                                {t("Break")}
+                              </p>
                             )}
-                            <p className="text-xs text-slate-500">{isOpen ? t("Collapse") : t("Expand")}</p>
+                            <p className="mt-1 inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                              {isOpen ? t("Collapse") : t("Expand")}
+                            </p>
                           </div>
                         </button>
 
                         {isOpen ? (
-                          <div className="bg-slate-50 px-3 py-2">
+                          <div className="bg-slate-100 px-3 py-3">
                             <div className="space-y-2">
                               {game.points.map((pt) => {
                                 const winnerName =
@@ -399,13 +405,17 @@ export default function MatchReviewPage() {
                                 const shotBy = resolveShotMakerDisplayName(pt, shotMakerCtx);
 
                                 return (
-                                  <div key={pt.id} className="rounded-md border border-slate-200 bg-white px-2 py-2 text-xs">
-                                    <p className="font-semibold text-slate-900">{pt.start_score ?? "—"}</p>
-                                    <p className="mt-0.5 text-slate-700">
-                                      {t("Point winner")}: {winnerName}
+                                  <div key={pt.id} className="rounded-md border border-slate-200 bg-white px-3 py-3 text-sm leading-5">
+                                    <p className="font-bold text-slate-900">{pt.start_score ?? "—"}</p>
+                                    <p className="mt-1 text-slate-700">
+                                      <span className="font-medium text-slate-500">{t("Point winner")}:</span>{" "}
+                                      <span className="font-semibold text-slate-800">{winnerName}</span>
                                     </p>
-                                    <p className="mt-0.5 text-slate-600">
-                                      {t("How won")}: {shotBy} {winMethod}
+                                    <p className="mt-1 text-slate-700">
+                                      <span className="font-medium text-slate-500">{t("How won")}:</span>{" "}
+                                      <span className="font-semibold text-slate-800">
+                                        {shotBy} {winMethod}
+                                      </span>
                                     </p>
                                   </div>
                                 );
